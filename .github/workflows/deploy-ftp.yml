@@ -1,0 +1,53 @@
+name: Deploy via FTP
+
+# Dispara o deploy sempre que houver push na branch main.
+# Você também pode rodar manualmente pela aba "Actions" (workflow_dispatch).
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ftp-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Baixa o código do repositório
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      # (Opcional) Se o projeto precisar de build, descomente e ajuste:
+      # - name: Setup Node
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20'
+      # - name: Instalar dependências e buildar
+      #   run: |
+      #     npm ci
+      #     npm run build
+
+      # 2. Envia os arquivos para o servidor via FTP
+      - name: Deploy FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}       # ex: ftp.seusite.com.br
+          username: ${{ secrets.FTP_USERNAME }}    # usuário do FTP
+          password: ${{ secrets.FTP_PASSWORD }}    # senha do FTP
+          port: 21                                 # 21 = FTP padrão / 990 = FTPS implícito
+          protocol: ftp                            # use "ftps" se o servidor exigir conexão segura
+
+          # Pasta local que será enviada (raiz do repositório por padrão).
+          # Se você buildou o projeto, aponte para a pasta de saída, ex: ./dist/
+          local-dir: ./
+
+          # Pasta de destino no servidor (onde o site fica hospedado)
+          server-dir: /public_html/
+
+          # Arquivos que NÃO devem ser enviados ao servidor
+          exclude:
+            - '**/.git*'
+            - '**/.git*/**'
+            - '**/node_modules/**'
+            - '.github/**'
+            - 'README.md'
