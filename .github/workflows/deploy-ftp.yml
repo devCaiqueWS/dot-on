@@ -17,17 +17,8 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      # (Opcional) Se o projeto precisar de build, descomente e ajuste:
-      # - name: Setup Node
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '20'
-      # - name: Instalar dependências e buildar
-      #   run: |
-      #     npm ci
-      #     npm run build
-
-      # 2. Envia os arquivos para o servidor via FTP
+      # 2. Envia os arquivos PHP/HTML/CSS para o servidor via FTP.
+      #    Projeto PHP não precisa de build: os arquivos vão como estão.
       - name: Deploy FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -37,17 +28,19 @@ jobs:
           port: 21                                 # 21 = FTP padrão / 990 = FTPS implícito
           protocol: ftp                            # use "ftps" se o servidor exigir conexão segura
 
-          # Pasta local que será enviada (raiz do repositório por padrão).
-          # Se você buildou o projeto, aponte para a pasta de saída, ex: ./dist/
+          # Pasta local enviada = raiz do repositório
           local-dir: ./
 
           # Pasta de destino no servidor (onde o site fica hospedado)
           server-dir: /public_html/
 
-          # Arquivos que NÃO devem ser enviados ao servidor
-          exclude:
-            - '**/.git*'
-            - '**/.git*/**'
-            - '**/node_modules/**'
-            - '.github/**'
-            - 'README.md'
+          # Arquivos que NÃO devem ser enviados ao servidor.
+          # Precisa ser uma string (um padrão por linha), NÃO uma lista YAML.
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            .env
+            **/.env
+            README.md
+            *.md
