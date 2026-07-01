@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [('icon.ico', '.')]   # ícone embutido para uso em runtime (janela/bandeja)
 binaries = []
 hiddenimports = ['requests']
 tmp_ret = collect_all('requests')
@@ -30,6 +30,7 @@ exe = EXE(
     a.datas,
     [],
     name='DOT-ON-Agent',
+    icon='icon.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

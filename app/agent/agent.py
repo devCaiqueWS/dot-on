@@ -63,6 +63,11 @@ try:
 except Exception:
     pass
 
+def recurso(nome):
+    """Caminho de um recurso embutido (datas do PyInstaller ou pasta do script)."""
+    base = getattr(sys, '_MEIPASS', None) or str(EXE_DIR)
+    return os.path.join(base, nome)
+
 # URL padrao de producao. O instalador da empresa sobrescreve via dot-on.ini.
 DEFAULT_API_URL = "https://dot-on.com.br/app/api/"
 
@@ -660,6 +665,15 @@ class MainWindow(QMainWindow):
 # ------------------------------------------------------------------
 # ICONE DA BANDEJA
 # ------------------------------------------------------------------
+def app_icon():
+    """Ícone do app: usa o icon.ico embutido; se faltar, desenha um de reserva."""
+    ico = recurso('icon.ico')
+    if os.path.exists(ico):
+        ic = QIcon(ico)
+        if not ic.isNull():
+            return ic
+    return make_icon()
+
 def make_icon():
     pm = QPixmap(64, 64); pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -682,6 +696,7 @@ def main():
     sys.excepthook = _excepthook
 
     app = QApplication(sys.argv); app.setQuitOnLastWindowClosed(False)
+    app.setWindowIcon(app_icon())   # ícone da janela/barra de tarefas
     api = APIClient(CFG['api_url'])
 
     if not api.token or not api.user:
@@ -689,8 +704,9 @@ def main():
         if dlg.exec_() != QDialog.Accepted:
             sys.exit(0)
 
-    icon = make_icon()
+    icon = app_icon()
     win = MainWindow(api)
+    win.setWindowIcon(icon)
     win.show()
 
     tray = QSystemTrayIcon(icon); tray.setToolTip("DOT-ON - Registro de Ponto")
