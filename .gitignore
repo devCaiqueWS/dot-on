@@ -1,0 +1,29 @@
+# === Python / build do agent ===
+.venv/
+app/agent/build/
+app/agent/dist/
+__pycache__/
+*.pyc
+*.pyo
+
+# Artefatos de runtime do agent (gerados na máquina do funcionário)
+app/agent/.token
+app/agent/agent.log
+app/agent/config.json
+
+# === Logs ===
+*.log
+app/logs/*
+!app/logs/.htaccess
+
+# === Uploads de comprovações (dados de usuário, não versionar) ===
+app/uploads/justificativas/*
+!app/uploads/justificativas/.htaccess
+
+# === Sistema ===
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Observação: app/downloads/DOT-ON-Agent.exe É versionado de propósito
+# (binário distribuído aos funcionários).

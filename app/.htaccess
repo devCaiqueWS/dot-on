@@ -1,0 +1,36 @@
+# DOT-ON - Roteamento e segurança
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /app/
+
+    # === Instalador personalizado por empresa ===
+    # /install/{slug}/download → ZIP do instalador
+    RewriteRule ^install/([a-z0-9-]+)/download/?$ install.php?slug=$1&download=1 [L,QSA]
+    # /install/{slug} → página HTML institucional
+    RewriteRule ^install/([a-z0-9-]+)/?$ install.php?slug=$1 [L,QSA]
+
+    # === API SaaS público (signup, cnpj, parse_funcionarios) ===
+    RewriteRule ^api/signup/?$ api/signup.php [L,QSA]
+    RewriteRule ^api/cnpj/[0-9]+/?$ api/signup.php [L,QSA]
+    RewriteRule ^api/parse_funcionarios/?$ api/signup.php [L,QSA]
+
+    # === API REST principal ===
+    RewriteRule ^api/?$ api/index.php [L,QSA]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^api/(.+)$ api/index.php [L,QSA]
+</IfModule>
+
+# Bloquear acesso direto a arquivos sensíveis
+<FilesMatch "\.(sql|md|log|ini)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

@@ -1,0 +1,940 @@
+openapi: 3.0.3
+info:
+  title: DOT-ON API
+  version: 1.0.0
+  description: |
+    Documentacao OpenAPI da API DOT-ON.
+    A API principal usa as rotas limpas em /app/api/{rota}.
+    Exemplos reais: /app/api/login, /app/api/batida.
+    A API publica de onboarding usa /app/api/signup, /app/api/cnpj/{cnpj} e /app/api/parse_funcionarios.
+servers:
+  - url: https://dot-on.com.br
+security:
+  - bearerAuth: []
+paths:
+  /app/api:
+    get:
+      tags: [System]
+      summary: Healthcheck padrao
+      description: Retorna o status da aplicacao quando `rota` esta vazia.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+  /app/api/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      description: Autentica por email e senha.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              default:
+                value:
+                  email: gestor@empresa.com.br
+                  senha: MinhaSenha123
+      responses:
+        '200':
+          description: Login realizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credenciais invalidas ou empresa inativa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/trocar-senha:
+    post:
+      tags: [Auth]
+      summary: Trocar senha
+      description: Troca a senha do usuario autenticado.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            examples:
+              default:
+                value:
+                  senha_atual: SenhaAntiga123
+                  nova_senha: NovaSenha123
+      responses:
+        '200':
+          description: Senha alterada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Senha invalida ou regra nao atendida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/batida:
+    post:
+      tags: [Batidas]
+      summary: Registrar batida
+      description: Registra entrada, saida ou eventos de intervalo. Emite CRP automaticamente quando possivel.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatidaRequest'
+            examples:
+              entrada:
+                value:
+                  tipo: entrada
+                  momento: '2026-06-24 08:00:00'
+                  hostname: terminal-01
+              saida:
+                value:
+                  tipo: saida
+                  momento: '2026-06-24 17:00:00'
+      responses:
+        '200':
+          description: Batida registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatidaResponse'
+        '400':
+          description: Requisicao invalida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/ociosidade:
+    post:
+      tags: [Sessoes]
+      summary: Registrar ociosidade
+      description: Registra um periodo de ociosidade dentro da sessao do dia.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OciosidadeRequest'
+            examples:
+              default:
+                value:
+                  inicio: '2026-06-24 10:15:00'
+                  fim: '2026-06-24 10:30:00'
+                  motivo: Pausa operacional
+      responses:
+        '200':
+          description: Ociosidade registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OciosidadeResponse'
+        '400':
+          description: Dados ausentes ou sessao nao encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/hora-extra/solicitar:
+    post:
+      tags: [Horas Extras]
+      summary: Solicitar hora extra
+      description: Abre uma solicitacao de hora extra para analise do gestor.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoraExtraSolicitarRequest'
+            examples:
+              default:
+                value:
+                  minutos: 60
+                  justificativa: Necessidade de fechamento de folha
+      responses:
+        '200':
+          description: Pedido criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoraExtraSolicitarResponse'
+        '400':
+          description: Dados invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/hora-extra/status:
+    get:
+      tags: [Horas Extras]
+      summary: Status da hora extra
+      description: Consulta o status de um pedido da propria conta.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: integer
+          example: 123
+      responses:
+        '200':
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoraExtraStatusResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/sessao/atual:
+    get:
+      tags: [Sessoes]
+      summary: Sessao atual
+      description: Retorna a sessao do dia e suas batidas.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessaoAtualResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/sessao/mes:
+    get:
+      tags: [Sessoes]
+      summary: Espelho mensal
+      description: Retorna as sessoes do mes do usuario autenticado.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: mes
+          required: false
+          schema:
+            type: string
+            example: '2026-06'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessaoMesResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/justificativa:
+    post:
+      tags: [Sessoes]
+      summary: Enviar justificativa
+      description: Registra justificativa de ausencia ou atraso como pendencia.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JustificativaRequest'
+            examples:
+              default:
+                value:
+                  data_ref: '2026-06-24'
+                  tipo: atraso
+                  motivo: Houve atraso por questao de transporte
+      responses:
+        '200':
+          description: Justificativa criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdMessageResponse'
+        '400':
+          description: Motivo invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/escala:
+    get:
+      tags: [Config]
+      summary: Escala do usuario
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EscalaResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/config:
+    get:
+      tags: [Config]
+      summary: Configuracoes da empresa
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/heartbeat:
+    post:
+      tags: [System]
+      summary: Heartbeat
+      description: Retorna o horario do servidor para checagem de conectividade.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatResponse'
+        '401':
+          description: Token invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/validar:
+    get:
+      tags: [Validation]
+      summary: Validar batida por NSR
+      description: Consulta publica para validar integridade de uma batida pelo NSR.
+      parameters:
+        - in: query
+          name: nsr
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidarResponse'
+        '400':
+          description: NSR invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: NSR nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/ping:
+    get:
+      tags: [System]
+      summary: Ping
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+  /app/api/cnpj/{cnpj}:
+    get:
+      tags: [Onboarding]
+      summary: Validar CNPJ
+      description: Consulta a BrasilAPI e devolve dados basicos da empresa.
+      parameters:
+        - in: path
+          name: cnpj
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9]{14}$'
+          example: '12345678000199'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CnpjLookupResponse'
+  /app/api/signup:
+    post:
+      tags: [Onboarding]
+      summary: Cadastro publico
+      description: Cria empresa, gestor e funcionarios iniciais.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+            examples:
+              default:
+                value:
+                  gestor:
+                    nome: Maria Silva
+                    email: maria@empresa.com.br
+                    senha: Senha1234
+                    celular: '11999999999'
+                  empresa:
+                    cnpj: '12345678000199'
+                    razao_social: Empresa Exemplo LTDA
+                    nome_fantasia: Exemplo
+                    telefone: '1133333333'
+                    setor: Servicos
+                    cep: '01001000'
+                    cidade_uf: Sao Paulo/SP
+                    endereco: Rua Exemplo, 100
+                  jornada:
+                    entrada: '08:00'
+                    saida: '17:00'
+                    almoco_ini: '12:00'
+                    almoco_fim: '13:00'
+                    tolerancia: 10
+                    dias_semana: 62
+                  funcionarios:
+                    - nome: Joao Pereira
+                      email: joao@empresa.com.br
+                      cpf: '12345678901'
+                      matricula: FUN001
+                  enviar_email: true
+      responses:
+        '200':
+          description: Empresa criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupResponse'
+        '400':
+          description: Dados invalidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /app/api/parse_funcionarios:
+    post:
+      tags: [Onboarding]
+      summary: Importar funcionarios
+      description: Aceita CSV, XLS ou XLSX.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParseFuncionariosRequest'
+      responses:
+        '200':
+          description: Planilha processada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParseFuncionariosResponse'
+        '400':
+          description: Arquivo ausente ou formato invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        mensagem:
+          type: string
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        erro:
+          type: string
+        debug:
+          type: string
+    PingResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        app:
+          type: string
+          example: dot-on
+        version:
+          type: string
+          example: '1.0'
+        server_time:
+          type: string
+          example: '2026-06-24T12:00:00-03:00'
+    LoginRequest:
+      type: object
+      required: [email, senha]
+      properties:
+        email:
+          type: string
+          format: email
+        senha:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        token:
+          type: string
+        precisa_trocar_senha:
+          type: integer
+          example: 0
+        user:
+          $ref: '#/components/schemas/UserInfo'
+        empresa:
+          $ref: '#/components/schemas/EmpresaInfo'
+    UserInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome:
+          type: string
+        matricula:
+          type: string
+        perfil:
+          type: string
+        empresa_id:
+          type: integer
+        escala_id:
+          type: integer
+        email:
+          type: string
+    EmpresaInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        razao_social:
+          type: string
+        nome_fantasia:
+          type: string
+        plano:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [senha_atual, nova_senha]
+      properties:
+        senha_atual:
+          type: string
+        nova_senha:
+          type: string
+          minLength: 8
+    BatidaRequest:
+      type: object
+      required: [tipo]
+      properties:
+        tipo:
+          type: string
+          enum: [entrada, saida_intervalo, retorno_intervalo, saida, extra_inicio, extra_fim]
+        momento:
+          type: string
+          example: '2026-06-24 08:00:00'
+        hostname:
+          type: string
+          maxLength: 100
+    BatidaResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        nsr:
+          type: integer
+        sessao_id:
+          type: integer
+        hash:
+          type: string
+        crp_url:
+          type: string
+          nullable: true
+        crp_emitido:
+          type: boolean
+        extemporanea:
+          type: boolean
+    OciosidadeRequest:
+      type: object
+      required: [inicio, fim]
+      properties:
+        inicio:
+          type: string
+          example: '2026-06-24 10:15:00'
+        fim:
+          type: string
+          example: '2026-06-24 10:30:00'
+        motivo:
+          type: string
+    OciosidadeResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        duracao_segundos:
+          type: integer
+    HoraExtraSolicitarRequest:
+      type: object
+      required: [minutos, justificativa]
+      properties:
+        minutos:
+          type: integer
+          minimum: 1
+        justificativa:
+          type: string
+    HoraExtraSolicitarResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        id:
+          type: integer
+        status:
+          type: string
+          example: pendente
+    HoraExtraStatusResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        pedido:
+          type: object
+          properties:
+            id:
+              type: integer
+            status:
+              type: string
+            minutos_solicitados:
+              type: integer
+            minutos_aprovados:
+              type: integer
+              nullable: true
+            motivo_decisao:
+              type: string
+              nullable: true
+            decidido_em:
+              type: string
+              nullable: true
+    SessaoAtualResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        sessao:
+          type: object
+          nullable: true
+        batidas:
+          type: array
+          items:
+            type: object
+    SessaoMesResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        mes:
+          type: string
+        dias:
+          type: array
+          items:
+            type: object
+    JustificativaRequest:
+      type: object
+      required: [motivo]
+      properties:
+        data_ref:
+          type: string
+          example: '2026-06-24'
+        tipo:
+          type: string
+          example: atraso
+        motivo:
+          type: string
+          minLength: 10
+    IdMessageResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        id:
+          type: integer
+        mensagem:
+          type: string
+    EscalaResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        escala:
+          type: object
+          nullable: true
+    ConfigResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        config:
+          type: object
+          additionalProperties:
+            type: string
+    HeartbeatResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        server_time:
+          type: string
+    ValidarResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        autentico:
+          type: boolean
+        batida:
+          type: object
+        hash_recalculado:
+          type: string
+    CnpjLookupResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fonte:
+          type: string
+        dados:
+          type: object
+          nullable: true
+    SignupRequest:
+      type: object
+      required: [gestor, empresa]
+      properties:
+        gestor:
+          type: object
+          required: [nome, email, senha]
+          properties:
+            nome:
+              type: string
+            email:
+              type: string
+              format: email
+            senha:
+              type: string
+            celular:
+              type: string
+        empresa:
+          type: object
+          required: [cnpj, razao_social]
+          properties:
+            cnpj:
+              type: string
+            razao_social:
+              type: string
+            nome_fantasia:
+              type: string
+            telefone:
+              type: string
+            setor:
+              type: string
+            cep:
+              type: string
+            cidade_uf:
+              type: string
+            endereco:
+              type: string
+        jornada:
+          type: object
+          properties:
+            entrada:
+              type: string
+            saida:
+              type: string
+            almoco_ini:
+              type: string
+            almoco_fim:
+              type: string
+            tolerancia:
+              type: integer
+            dias_semana:
+              type: integer
+        funcionarios:
+          type: array
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              email:
+                type: string
+              cpf:
+                type: string
+              matricula:
+                type: string
+        enviar_email:
+          type: boolean
+    SignupResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        empresa_id:
+          type: integer
+        gestor:
+          type: object
+          properties:
+            id:
+              type: integer
+            email:
+              type: string
+            token:
+              type: string
+        funcionarios_criados:
+          type: integer
+        emails_duplicados:
+          type: array
+          items:
+            type: string
+        mensagem:
+          type: string
+        url_painel:
+          type: string
+    ParseFuncionariosRequest:
+      type: object
+      required: [arquivo]
+      properties:
+        arquivo:
+          type: string
+          format: binary
+    ParseFuncionariosResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        funcionarios:
+          type: array
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              email:
+                type: string
+              cpf:
+                type: string
+              matricula:
+                type: string
+        total:
+          type: integer

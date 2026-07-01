@@ -1,0 +1,45 @@
+============================================================
+ DOT-ON AGENT - Registro de Ponto Eletronico para Windows
+============================================================
+
+REQUISITOS:
+ - Windows 10/11
+ - Python 3.10+ (https://www.python.org/downloads/)
+   (marque "Add Python to PATH" durante a instalacao)
+
+INSTALACAO:
+ 1. Descompacte este ZIP em uma pasta (ex.: C:\DOT-ON\).
+    Mantenha SEMPRE os arquivos juntos, em especial:
+      - agent.py
+      - config.json
+      - dot-on.ini   (quando baixado pelo link da sua empresa)
+ 2. Abra o PowerShell na pasta e instale as dependencias:
+      pip install -r requirements.txt
+ 3. Execute:
+      python agent.py
+
+CONFIGURACAO DO SERVIDOR:
+ - Se voce baixou pelo link personalizado da sua empresa, o arquivo
+   "dot-on.ini" ja traz o endereco correto (api_url). Nao altere.
+ - Caso contrario, o endereco padrao e:
+      https://dot-on.com.br/app/api/
+   Voce tambem pode confirma-lo na tela de login, campo "Servidor".
+
+PRIMEIRO ACESSO:
+ - Faca login com o e-mail e a senha temporaria que voce recebeu.
+ - O sistema vai pedir para criar uma nova senha (minimo 8 caracteres).
+
+INICIAR AUTOMATICAMENTE COM O WINDOWS (opcional):
+ - Pressione Win+R, digite "shell:startup" e crie um atalho que execute:
+      pythonw "C:\DOT-ON\agent.py"
+
+FUNCIONALIDADES:
+ - Registro de entrada / saida / intervalo
+ - Deteccao automatica de ociosidade (mouse/teclado parados)
+ - Lembrete de cumprimento de intervalo (almoco)
+ - Bloqueio de tela ao fim do expediente
+ - Solicitacao de hora extra com aprovacao do gestor
+ - Funciona em segundo plano (icone na bandeja)
+
+SUPORTE: pierre@syscomai.com.br
+============================================================

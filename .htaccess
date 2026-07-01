@@ -1,0 +1,78 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# DOT-ON · .htaccess (raiz dot-on.com.br)
+# Performance, segurança e SEO
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── 1. Forçar HTTPS ─────────────────────────────────────────────────────────
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ── 2. Forçar não-www (dot-on.com.br canônico) ──────────────────────────────
+RewriteCond %{HTTP_HOST} ^www\.dot-on\.com\.br [NC]
+RewriteRule ^(.*)$ https://dot-on.com.br/$1 [L,R=301]
+
+# ── 3. Página padrão ────────────────────────────────────────────────────────
+DirectoryIndex index.html index.php
+
+# API REST
+RewriteRule ^app/api/signup/?$ app/api/signup.php [L,QSA]
+RewriteRule ^app/api/cnpj/[0-9]+/?$ app/api/signup.php [L,QSA]
+RewriteRule ^app/api/parse_funcionarios/?$ app/api/signup.php [L,QSA]
+RewriteRule ^app/api/?$ app/api/index.php [L,QSA]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^app/api/(.+)$ app/api/index.php [L,QSA]
+
+# ── 4. Cache de assets estáticos ────────────────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/html "access plus 1 hour"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+</IfModule>
+
+# ── 5. Compressão Gzip ──────────────────────────────────────────────────────
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ── 6. Headers de segurança ─────────────────────────────────────────────────
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # HSTS (ative só quando tiver SSL 100% funcionando)
+    # Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+</IfModule>
+
+# ── 7. Proteger arquivos sensíveis ──────────────────────────────────────────
+<FilesMatch "^\.(htaccess|htpasswd|env|git|DS_Store)">
+    Require all denied
+</FilesMatch>
+
+# ── 8. Página 404 customizada (opcional) ────────────────────────────────────
+# ErrorDocument 404 /404.html
+
+# ── 9. Charset padrão ───────────────────────────────────────────────────────
+AddDefaultCharset UTF-8
+
+# ── 10. MIME types extras ───────────────────────────────────────────────────
+<IfModule mod_mime.c>
+    AddType image/svg+xml svg svgz
+    AddType font/woff2 woff2
+    AddType application/manifest+json webmanifest
+</IfModule>
