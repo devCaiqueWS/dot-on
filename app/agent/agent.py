@@ -382,13 +382,16 @@ class MainWindow(QMainWindow):
         self.lbl_user.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.lbl_user)
 
-        # Cartao de escala
+        # Cartao de escala (almoco por duracao; campos podem vir nulos/vazios)
+        def _hm(v, d='--'):
+            v = '' if v is None else str(v)
+            return v[:5] if v else d
         esc_txt = "Sem escala configurada"
         if self.escala:
-            esc_txt = (f"Jornada: {self.escala.get('entrada','--')[:5]} "
-                       f"- {self.escala.get('intervalo_inicio','--')[:5]} "
-                       f"| {self.escala.get('intervalo_fim','--')[:5]} "
-                       f"- {self.escala.get('saida','--')[:5]}")
+            almoco = self.escala.get('almoco_minutos')
+            almoco_txt = f"{int(almoco)} min" if almoco not in (None, '', 0, '0') else "--"
+            esc_txt = (f"Jornada: {_hm(self.escala.get('entrada'))} - {_hm(self.escala.get('saida'))}"
+                       f"   |   Almoco: {almoco_txt}")
         lbl_esc = QLabel(esc_txt)
         lbl_esc.setStyleSheet("background:#f3f4f6;padding:10px;border-radius:6px;font-size:12px")
         lbl_esc.setAlignment(Qt.AlignCenter)

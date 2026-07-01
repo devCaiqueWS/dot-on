@@ -22,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $r = ap_anular_batida((int)$_POST['batida_id'], $emp_id, (int)$user['id'], trim($_POST['motivo'] ?? ''));
     } elseif ($acao === 'corrigir') {
         $r = ap_corrigir_horario((int)$_POST['batida_id'], $emp_id, $_POST['nova_hora'] ?? '', (int)$user['id'], trim($_POST['motivo'] ?? ''));
-    } elseif ($acao === 'editar_escala') {
-        $r = ap_editar_escala((int)$_POST['escala_id'], $emp_id, $_POST, (int)$user['id']);
+    } elseif ($acao === 'salvar_jornada') {
+        $r = ap_salvar_jornada((int)$_POST['usuario_id'], $emp_id, $_POST, (int)$user['id']);
     } else {
         $r = ['ok'=>false, 'msg'=>'Ação inválida.'];
     }
@@ -39,7 +39,7 @@ $funcs = db()->prepare("SELECT id, nome_completo, matricula FROM dot_usuarios WH
 $funcs->execute([$emp_id]); $funcs = $funcs->fetchAll();
 
 $batidas = $func ? ap_batidas_do_dia($emp_id, $func, $data) : [];
-$escala  = $func ? ap_escala_do_funcionario($func, $emp_id) : null;
+$jornada_dias = $func ? jornada_listar($func) : [];
 $func_nome = '';
 foreach ($funcs as $f) if ((int)$f['id'] === $func) $func_nome = $f['nome_completo'];
 
@@ -61,9 +61,10 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
 .mini-form input[type=text],.mini-form input[type=time]{padding:7px 10px;border:1.5px solid #cbd5e1;border-radius:7px}
 .mini-form input[type=text]{flex:1;min-width:200px}
 .tagx{font-size:.66rem;font-weight:700;text-transform:uppercase;padding:2px 7px;border-radius:12px;background:#fee2e2;color:#991b1b}
-.jornada-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
-.jornada-form label{font-size:.8rem;font-weight:600;color:#475569;display:block}
-.jornada-form input{width:100%;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:8px;margin-top:4px}
+.jornada-tbl input[type=time],.jornada-tbl input[type=number]{padding:7px 9px;border:1.5px solid #cbd5e1;border-radius:7px}
+.jornada-tbl td,.jornada-tbl th{padding:8px 10px;vertical-align:middle}
+.jrow.folga{opacity:.5;background:#f8fafc}
+.jrow.folga input[type=time],.jrow.folga input[type=number]{background:#f1f5f9}
 </style>
 
 <?php if ($msg): ?><div class="alert alert-<?= $msg_tipo==='ok'?'ok':'erro' ?>"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
@@ -160,34 +161,38 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
         </form>
     </div>
 
-    <!-- JORNADA / ESCALA -->
+    <!-- JORNADA DO FUNCIONÁRIO POR DIA DA SEMANA -->
     <div class="panel">
-        <h2>🕗 Jornada (escala) do funcionário</h2>
-        <?php if (!$escala): ?>
-            <p class="empty">Este funcionário não tem escala atribuída.</p>
-        <?php else: ?>
-            <?php if ($escala['_compartilhada_por'] > 1): ?>
-            <div class="alert alert-erro" style="background:#fff7ed;color:#9a3412;border:1px solid #fed7aa">
-                ⚠️ Esta escala <strong>"<?= htmlspecialchars($escala['nome']) ?>"</strong> é usada por <strong><?= $escala['_compartilhada_por'] ?> funcionários</strong>. Alterá-la muda a jornada de todos eles.
+        <h2>🕗 Jornada de <?= htmlspecialchars($func_nome) ?></h2>
+        <p style="font-size:.82rem;color:#64748b;margin-bottom:10px">Cada funcionário tem a sua jornada. O <strong>almoço é uma duração</strong> (minutos) definida por você — o funcionário cumpre o tempo quando quiser, sem horário fixo.</p>
+        <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="acao" value="salvar_jornada">
+            <input type="hidden" name="usuario_id" value="<?= $func ?>">
+            <input type="hidden" name="func" value="<?= $func ?>"><input type="hidden" name="data" value="<?= $data ?>">
+            <div style="overflow-x:auto">
+            <table class="tbl jornada-tbl">
+                <thead><tr>
+                    <th>Dia</th><th>Trabalha</th><th>Entrada</th><th>Saída</th><th>Almoço (min)</th><th>Carga (min)</th>
+                </tr></thead>
+                <tbody>
+                <?php foreach (AP_DOW_ORDEM as $dow): $d = $jornada_dias[$dow] ?? []; $trab = (int)($d['trabalha'] ?? 0) === 1;
+                    $v = fn($k) => !empty($d[$k]) ? substr($d[$k],0,5) : ''; ?>
+                    <tr class="jrow <?= $trab?'':'folga' ?>">
+                        <td><strong><?= AP_DOW_LABEL[$dow] ?></strong></td>
+                        <td style="text-align:center"><input type="checkbox" class="chk-trab" name="d_trab[<?= $dow ?>]" value="1" <?= $trab?'checked':'' ?> onchange="this.closest('tr').classList.toggle('folga',!this.checked)"></td>
+                        <td><input type="time" name="d_ent[<?= $dow ?>]" value="<?= $v('entrada') ?>"></td>
+                        <td><input type="time" name="d_sai[<?= $dow ?>]" value="<?= $v('saida') ?>"></td>
+                        <td><input type="number" name="d_almoco[<?= $dow ?>]" value="<?= isset($d['almoco_minutos'])&&$d['almoco_minutos']!==null?(int)$d['almoco_minutos']:'' ?>" min="0" max="480" placeholder="60" style="width:90px"></td>
+                        <td><input type="number" name="d_carga[<?= $dow ?>]" value="<?= isset($d['carga_minutos'])&&$d['carga_minutos']!==null?(int)$d['carga_minutos']:'' ?>" min="0" max="1440" placeholder="auto" style="width:90px"></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
             </div>
-            <?php endif; ?>
-            <form method="post">
-                <?= csrf_field() ?>
-                <input type="hidden" name="acao" value="editar_escala">
-                <input type="hidden" name="escala_id" value="<?= $escala['id'] ?>">
-                <input type="hidden" name="func" value="<?= $func ?>"><input type="hidden" name="data" value="<?= $data ?>">
-                <div class="jornada-form">
-                    <div><label>Nome da escala</label><input type="text" name="nome" value="<?= htmlspecialchars($escala['nome']) ?>"></div>
-                    <div><label>Entrada</label><input type="time" name="entrada" value="<?= substr($escala['entrada'],0,5) ?>" required></div>
-                    <div><label>Início intervalo</label><input type="time" name="intervalo_inicio" value="<?= $escala['intervalo_inicio']?substr($escala['intervalo_inicio'],0,5):'' ?>"></div>
-                    <div><label>Fim intervalo</label><input type="time" name="intervalo_fim" value="<?= $escala['intervalo_fim']?substr($escala['intervalo_fim'],0,5):'' ?>"></div>
-                    <div><label>Saída</label><input type="time" name="saida" value="<?= substr($escala['saida'],0,5) ?>" required></div>
-                    <div><label>Carga diária (min)</label><input type="number" name="carga_diaria_minutos" value="<?= (int)$escala['carga_diaria_minutos'] ?>" min="0" max="1440"></div>
-                    <div><label>Tolerância (min)</label><input type="number" name="tolerancia_minutos" value="<?= (int)$escala['tolerancia_minutos'] ?>" min="0" max="120"></div>
-                    <div><button class="btn btn-primary" style="width:100%">Salvar jornada</button></div>
-                </div>
-            </form>
-        <?php endif; ?>
+            <p style="font-size:.8rem;color:#64748b;margin:8px 0">Desmarque <strong>Trabalha</strong> para folga. Carga em branco = calculada de (saída − entrada − almoço).</p>
+            <button class="btn btn-primary">Salvar jornada</button>
+        </form>
     </div>
 
 </div>

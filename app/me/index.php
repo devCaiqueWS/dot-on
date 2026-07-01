@@ -14,10 +14,24 @@ $st = db()->prepare("SELECT * FROM dot_empresas WHERE id = ?");
 $st->execute([$user['empresa_id']]);
 $empresa = $st->fetch();
 
-// Pegar escala
+// Pegar escala + aplicar a jornada do dia da semana atual
 $st = db()->prepare("SELECT * FROM dot_escalas WHERE id = ?");
 $st->execute([$user['escala_id']]);
 $escala = $st->fetch();
+$folga_hoje = false; $almoco_hoje = 60;
+if ($escala) {
+    require_once __DIR__ . '/../includes/ajuste_ponto.php';
+    $dia_hoje = jornada_dia((int)$user['id'], (int)date('w'));
+    if ($dia_hoje) {
+        $folga_hoje = ((int)$dia_hoje['trabalha'] === 0);
+        $almoco_hoje = (int)$dia_hoje['almoco_minutos'];
+        if (!$folga_hoje) {
+            $escala['entrada'] = $dia_hoje['entrada'] ?: $escala['entrada'];
+            $escala['saida'] = $dia_hoje['saida'] ?: $escala['saida'];
+            if ($dia_hoje['carga_minutos'] !== null) $escala['carga_diaria_minutos'] = (int)$dia_hoje['carga_minutos'];
+        }
+    }
+}
 
 // Sessão de hoje
 $hoje = date('Y-m-d');
@@ -81,7 +95,7 @@ if ($batidas_hoje) {
 $horas_hoje = floor($min_hoje / 60);
 $mins_hoje = (int)($min_hoje % 60);
 
-$min_objetivo = (int)($escala['carga_diaria_minutos'] ?? 480);
+$min_objetivo = $folga_hoje ? 0 : (int)($escala['carga_diaria_minutos'] ?? 480);
 $pct = $min_objetivo > 0 ? min(100, ($min_hoje / $min_objetivo) * 100) : 0;
 ?>
 <!DOCTYPE html>
@@ -258,12 +272,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f
 <?php if ($escala): ?>
 <div class="card">
 <h3>Sua jornada</h3>
-<div style="display:flex;justify-content:space-between;text-align:center;gap:10px">
-<div><div style="font-size:1.4rem;font-weight:800;color:#10b981">▶</div><small style="color:#64748b">Entrada<br><strong style="color:#0c4a6e"><?= substr($escala['entrada'],0,5) ?></strong></small></div>
-<div><div style="font-size:1.4rem;font-weight:800;color:#f59e0b">⏸</div><small style="color:#64748b">Almoço<br><strong style="color:#0c4a6e"><?= substr($escala['intervalo_inicio'],0,5) ?></strong></small></div>
-<div><div style="font-size:1.4rem;font-weight:800;color:#0284c7">⏯</div><small style="color:#64748b">Retorno<br><strong style="color:#0c4a6e"><?= substr($escala['intervalo_fim'],0,5) ?></strong></small></div>
-<div><div style="font-size:1.4rem;font-weight:800;color:#ef4444">⏹</div><small style="color:#64748b">Saída<br><strong style="color:#0c4a6e"><?= substr($escala['saida'],0,5) ?></strong></small></div>
+<div style="display:flex;justify-content:space-around;text-align:center;gap:10px">
+<div><div style="font-size:1.4rem;font-weight:800;color:#10b981">▶</div><small style="color:#64748b">Entrada<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : substr($escala['entrada'],0,5) ?></strong></small></div>
+<div><div style="font-size:1.4rem;font-weight:800;color:#f59e0b">🍽</div><small style="color:#64748b">Almoço<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : $almoco_hoje.'min' ?></strong></small></div>
+<div><div style="font-size:1.4rem;font-weight:800;color:#ef4444">⏹</div><small style="color:#64748b">Saída<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : substr($escala['saida'],0,5) ?></strong></small></div>
 </div>
+<?php if ($folga_hoje): ?><p style="text-align:center;color:#f59e0b;font-weight:600;margin-top:8px">🌴 Folga hoje</p><?php endif; ?>
 </div>
 <?php endif; ?>
 </div>

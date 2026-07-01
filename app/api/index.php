@@ -17,6 +17,7 @@ require_once __DIR__ . '/../includes/mailer.php';
 require_once __DIR__ . '/../includes/repp.php';
 require_once __DIR__ . '/../includes/crp.php';
 require_once __DIR__ . '/../includes/justificativas.php';
+require_once __DIR__ . '/../includes/ajuste_ponto.php';
 
 function api_route(): string {
     if (!empty($_GET['rota'])) {
@@ -319,7 +320,27 @@ try {
             if (!$u['escala_id']) json_response(['ok'=>true,'escala'=>null]);
             $stmt = db()->prepare("SELECT * FROM dot_escalas WHERE id=? AND empresa_id=?");
             $stmt->execute([$u['escala_id'], $u['empresa_id']]);
-            json_response(['ok'=>true,'escala'=>$stmt->fetch() ?: null]);
+            $esc = $stmt->fetch() ?: null;
+            if ($esc) {
+                // Aplica a jornada do funcionário no dia atual (0=domingo..6=sábado).
+                // Almoço é por duração (sem horário fixo): zera intervalo_inicio/fim.
+                $dia = jornada_dia((int)$u['id'], (int)date('w'));
+                if ($dia) {
+                    $esc['dia_semana'] = (int)$dia['dia_semana'];
+                    $esc['trabalha_hoje'] = (int)$dia['trabalha'];
+                    $esc['almoco_minutos'] = (int)$dia['almoco_minutos'];
+                    // Almoço é por duração — sem horário fixo. Strings vazias (não null)
+                    // para não quebrar agents antigos que fazem fatiamento [:5].
+                    $esc['intervalo_inicio'] = '';
+                    $esc['intervalo_fim'] = '';
+                    if ((int)$dia['trabalha'] === 1) {
+                        $esc['entrada'] = $dia['entrada'] ?: $esc['entrada'];
+                        $esc['saida'] = $dia['saida'] ?: $esc['saida'];
+                        if ($dia['carga_minutos'] !== null) $esc['carga_diaria_minutos'] = (int)$dia['carga_minutos'];
+                    }
+                }
+            }
+            json_response(['ok'=>true,'escala'=>$esc]);
             break;
 
         case 'GET config':

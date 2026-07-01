@@ -189,47 +189,122 @@ function ap_corrigir_horario(int $batida_id, int $empresa_id, string $nova_hora,
     return ['ok'=>true, 'msg'=>"Horário corrigido para ".substr($nova_hora,0,5)." (nova batida NSR ".str_pad((string)$nsr,6,'0',STR_PAD_LEFT).").", 'nsr'=>$nsr];
 }
 
-/** Escala (jornada) de um funcionário + quantos a compartilham. */
-function ap_escala_do_funcionario(int $usuario_id, int $empresa_id): ?array {
-    $st = db()->prepare("SELECT e.* FROM dot_escalas e
-        JOIN dot_usuarios u ON u.escala_id=e.id
-        WHERE u.id=? AND u.empresa_id=? AND e.empresa_id=? LIMIT 1");
-    $st->execute([$usuario_id, $empresa_id, $empresa_id]);
-    $e = $st->fetch();
-    if (!$e) return null;
-    $c = db()->prepare("SELECT COUNT(*) FROM dot_usuarios WHERE escala_id=? AND empresa_id=?");
-    $c->execute([$e['id'], $empresa_id]);
-    $e['_compartilhada_por'] = (int)$c->fetchColumn();
-    return $e;
+// ===================================================================
+// JORNADA DO FUNCIONÁRIO POR DIA DA SEMANA (dot_usuario_jornada)
+// Cada funcionário tem a SUA jornada (uns entram 08h, outros 09h).
+// O almoço é uma DURAÇÃO (minutos) definida pelo gestor — sem horário
+// fixo: o funcionário cumpre o tempo quando quiser.
+// ===================================================================
+
+// Ordem de exibição (segunda → domingo) e rótulos. 0=domingo .. 6=sábado.
+const AP_DOW_ORDEM  = [1,2,3,4,5,6,0];
+const AP_DOW_LABEL  = [0=>'Domingo',1=>'Segunda',2=>'Terça',3=>'Quarta',4=>'Quinta',5=>'Sexta',6=>'Sábado'];
+
+/** Garante a tabela e as 7 linhas (uma por dia) da jornada do funcionário. */
+function jornada_garantir(int $usuario_id): void {
+    static $tabela_ok = false;
+    if (!$tabela_ok) {
+        // Só roda DDL se a tabela não existir (CREATE faz commit implícito).
+        $existe = db()->query("SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dot_usuario_jornada'")->fetchColumn();
+        if (!$existe) {
+            db()->exec("CREATE TABLE dot_usuario_jornada (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                usuario_id INT NOT NULL,
+                dia_semana TINYINT NOT NULL,
+                trabalha TINYINT(1) NOT NULL DEFAULT 1,
+                entrada TIME NULL,
+                saida TIME NULL,
+                almoco_minutos INT NULL,
+                carga_minutos INT NULL,
+                UNIQUE KEY uq_usuario_dia (usuario_id, dia_semana)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+        $tabela_ok = true;
+    }
+    $tem = db()->prepare("SELECT COUNT(*) FROM dot_usuario_jornada WHERE usuario_id=?");
+    $tem->execute([$usuario_id]);
+    if ((int)$tem->fetchColumn() >= 7) return;
+
+    // Semeia a partir da escala do funcionário (se houver); senão 08–17 / 60min.
+    $st = db()->prepare("SELECT e.* FROM dot_usuarios u LEFT JOIN dot_escalas e ON e.id=u.escala_id WHERE u.id=?");
+    $st->execute([$usuario_id]);
+    $esc = $st->fetch() ?: [];
+    $entrada = $esc['entrada'] ?? '08:00:00';
+    $saida   = $esc['saida']   ?? '17:00:00';
+    $almoco  = 60;
+    if (!empty($esc['intervalo_inicio']) && !empty($esc['intervalo_fim'])) {
+        $almoco = max(0, (int)round((strtotime($esc['intervalo_fim']) - strtotime($esc['intervalo_inicio'])) / 60));
+    } elseif (isset($esc['intervalo_obrigatorio_minutos'])) {
+        $almoco = (int)$esc['intervalo_obrigatorio_minutos'];
+    }
+    $carga = (int)($esc['carga_diaria_minutos'] ?? 480);
+
+    $ins = db()->prepare("INSERT IGNORE INTO dot_usuario_jornada
+        (usuario_id, dia_semana, trabalha, entrada, saida, almoco_minutos, carga_minutos)
+        VALUES (?,?,?,?,?,?,?)");
+    for ($dow = 0; $dow <= 6; $dow++) {
+        $trab = ($dow >= 1 && $dow <= 5) ? 1 : 0;   // Seg–Sex por padrão
+        $ins->execute([$usuario_id, $dow, $trab, $entrada, $saida, $trab ? $almoco : 0, $trab ? $carga : 0]);
+    }
 }
 
-/** Edita a jornada/escala. Retorna ['ok','msg']. */
-function ap_editar_escala(int $escala_id, int $empresa_id, array $d, int $gestor_id): array {
-    $st = db()->prepare("SELECT * FROM dot_escalas WHERE id=? AND empresa_id=? LIMIT 1");
-    $st->execute([$escala_id, $empresa_id]);
-    $e = $st->fetch();
-    if (!$e) return ['ok'=>false, 'msg'=>'Escala não encontrada.'];
+/** Lista as 7 linhas da jornada do funcionário (indexadas por dia_semana 0..6). */
+function jornada_listar(int $usuario_id): array {
+    jornada_garantir($usuario_id);
+    $st = db()->prepare("SELECT * FROM dot_usuario_jornada WHERE usuario_id=?");
+    $st->execute([$usuario_id]);
+    $out = [];
+    foreach ($st->fetchAll() as $r) $out[(int)$r['dia_semana']] = $r;
+    return $out;
+}
 
-    $h = function($v, $obrig) {
+/** Jornada de um dia específico (0..6) do funcionário. Semeia se necessário. */
+function jornada_dia(int $usuario_id, int $dow): ?array {
+    $dias = jornada_listar($usuario_id);
+    return $dias[$dow] ?? null;
+}
+
+/**
+ * Salva a jornada do funcionário. $post arrays por dia (0..6):
+ *   d_trab[dow], d_ent[dow], d_sai[dow], d_almoco[dow], d_carga[dow]
+ * O almoço é duração em minutos (sem horário fixo). Retorna ['ok','msg'].
+ */
+function ap_salvar_jornada(int $usuario_id, int $empresa_id, array $post, int $gestor_id): array {
+    if (!ap_usuario_da_empresa($usuario_id, $empresa_id)) return ['ok'=>false, 'msg'=>'Funcionário não encontrado.'];
+    jornada_garantir($usuario_id);
+
+    $h = function($v) {
         $v = trim((string)$v);
-        if ($v === '') return $obrig ? false : null;
+        if ($v === '') return null;
         if (!preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $v)) return false;
         return strlen($v) === 5 ? $v.':00' : $v;
     };
-    $entrada = $h($d['entrada'] ?? '', true);
-    $saida   = $h($d['saida'] ?? '', true);
-    $ini     = $h($d['intervalo_inicio'] ?? '', false);
-    $fim     = $h($d['intervalo_fim'] ?? '', false);
-    if ($entrada === false || $saida === false || $ini === false || $fim === false) {
-        return ['ok'=>false, 'msg'=>'Horário inválido (use HH:MM).'];
-    }
-    $carga = max(0, min(1440, (int)($d['carga_diaria_minutos'] ?? $e['carga_diaria_minutos'])));
-    $tol   = max(0, min(120, (int)($d['tolerancia_minutos'] ?? $e['tolerancia_minutos'])));
-    $nome  = mb_substr(trim($d['nome'] ?? $e['nome']), 0, 100) ?: $e['nome'];
+    $up = db()->prepare("UPDATE dot_usuario_jornada
+        SET trabalha=?, entrada=?, saida=?, almoco_minutos=?, carga_minutos=?
+        WHERE usuario_id=? AND dia_semana=?");
 
-    db()->prepare("UPDATE dot_escalas SET nome=?, entrada=?, intervalo_inicio=?, intervalo_fim=?, saida=?,
-                   carga_diaria_minutos=?, tolerancia_minutos=? WHERE id=? AND empresa_id=?")
-        ->execute([$nome, $entrada, $ini, $fim, $saida, $carga, $tol, $escala_id, $empresa_id]);
-    auditar($gestor_id, 'ajuste_editar_escala', 'escala', $escala_id, ['nome'=>$nome, 'entrada'=>$entrada, 'saida'=>$saida]);
-    return ['ok'=>true, 'msg'=>'Jornada atualizada.'];
+    for ($dow = 0; $dow <= 6; $dow++) {
+        $trab = !empty($post['d_trab'][$dow]) ? 1 : 0;
+        $ent = $h($post['d_ent'][$dow] ?? '');
+        $sai = $h($post['d_sai'][$dow] ?? '');
+        if ($ent === false || $sai === false) {
+            return ['ok'=>false, 'msg'=>'Horário inválido em '.AP_DOW_LABEL[$dow].' (use HH:MM).'];
+        }
+        if ($trab && (!$ent || !$sai)) {
+            return ['ok'=>false, 'msg'=>AP_DOW_LABEL[$dow].': informe entrada e saída (ou marque como folga).'];
+        }
+        $almoco = ($trab && isset($post['d_almoco'][$dow]) && $post['d_almoco'][$dow] !== '')
+            ? max(0, min(480, (int)$post['d_almoco'][$dow])) : ($trab ? 60 : 0);
+        // carga: usa a informada; senão deriva de (saída - entrada - almoço)
+        $carga = isset($post['d_carga'][$dow]) && $post['d_carga'][$dow] !== ''
+            ? max(0, min(1440, (int)$post['d_carga'][$dow])) : null;
+        if ($carga === null && $trab && $ent && $sai) {
+            $carga = max(0, (int)round((strtotime($sai) - strtotime($ent)) / 60) - $almoco);
+        }
+        if (!$trab) { $carga = 0; $almoco = 0; }
+        $up->execute([$trab, $ent, $sai, $almoco, $carga, $usuario_id, $dow]);
+    }
+    auditar($gestor_id, 'ajuste_jornada_funcionario', 'usuario', $usuario_id, ['por'=>'dia']);
+    return ['ok'=>true, 'msg'=>'Jornada do funcionário atualizada.'];
 }
