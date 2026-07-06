@@ -112,6 +112,20 @@ try {
             $tiposValidos = ['entrada','saida_intervalo','retorno_intervalo','saida','extra_inicio','extra_fim'];
             if (!in_array($tipo, $tiposValidos)) json_response(['ok'=>false,'erro'=>'Tipo inválido'],400);
 
+            // Origem e localização. Batidas pelo NAVEGADOR (origem 'web') exigem
+            // geolocalização; o agent desktop (origem 'desktop') não exige.
+            $origem_batida = (($in['origem'] ?? '') === 'web') ? 'web' : 'desktop';
+            $lat = $in['latitude'] ?? null;
+            $lng = $in['longitude'] ?? null;
+            $precisao = isset($in['precisao']) && is_numeric($in['precisao']) ? (float)$in['precisao'] : null;
+            if ($origem_batida === 'web') {
+                if (!is_numeric($lat) || !is_numeric($lng) || abs((float)$lat) > 90 || abs((float)$lng) > 180) {
+                    json_response(['ok'=>false,'erro'=>'Localização obrigatória para bater ponto pelo navegador. Ative o GPS e permita o acesso à sua localização.'], 422);
+                }
+            }
+            $lat = is_numeric($lat) ? round((float)$lat, 7) : null;
+            $lng = is_numeric($lng) ? round((float)$lng, 7) : null;
+
             // Valida o momento informado pelo agente. Formato inválido ou data no
             // futuro (além de 5 min de tolerância de relógio) cai para a hora do servidor.
             $momento_in = (string)($in['momento'] ?? '');
@@ -164,14 +178,17 @@ try {
             // Detecta extemporânea (batida >30min depois do real)
             $extemporanea = (strtotime($momento) < time() - 1800) ? 1 : 0;
 
+            batidas_garantir_geo();
             $pdo->prepare("INSERT INTO dot_batidas
                 (nsr, sessao_id, empresa_id, usuario_id, tipo, momento, origem, ip_origem, hostname,
-                 cpf_snapshot, pis_snapshot, hash_registro, hash_anterior, hash_alg, extemporanea)
-                VALUES (?,?,?,?,?,?, 'desktop', ?, ?, ?, ?, ?, ?, 'SHA-256', ?)")
+                 cpf_snapshot, pis_snapshot, hash_registro, hash_anterior, hash_alg, extemporanea,
+                 latitude, longitude, precisao_metros)
+                VALUES (?,?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, 'SHA-256', ?, ?, ?, ?)")
                 ->execute([$nsr, $sessao_id, $u['empresa_id'], $u['id'], $tipo, $momento,
-                           $_SERVER['REMOTE_ADDR'] ?? null, $hostname,
+                           $origem_batida, $_SERVER['REMOTE_ADDR'] ?? null, $hostname,
                            $u['cpf'] ?? '', $u['pis'] ?? '',
-                           $hash_atual, $hash_anterior, $extemporanea]);
+                           $hash_atual, $hash_anterior, $extemporanea,
+                           $lat, $lng, $precisao]);
             $batida_id = (int)$pdo->lastInsertId();
 
             // Emite CRP automaticamente (com e-mail)

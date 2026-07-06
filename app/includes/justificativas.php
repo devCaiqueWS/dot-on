@@ -287,7 +287,7 @@ function jus_aprovar(int $id, int $empresa_id, int $aprovador_id, string $observ
 
         // Recalcula a sessão e emite CRP (fora da transação, tolerante a falha)
         try { jus_recalcular_sessao((int)$sessao_id); } catch (Throwable $e) {}
-        try { crp_emitir($batida_id, false); } catch (Throwable $e) { error_log('CRP correcao: ' . $e->getMessage()); }
+        try { crp_emitir($batida_id, true); } catch (Throwable $e) { error_log('CRP correcao: ' . $e->getMessage()); }
 
         auditar($aprovador_id, 'aprovar_correcao', 'justificativa', $id, ['nsr'=>$nsr, 'batida_id'=>$batida_id]);
         return ['ok'=>true, 'msg'=>"Correção aprovada. Batida registrada (NSR " . str_pad((string)$nsr,6,'0',STR_PAD_LEFT) . ").", 'nsr'=>$nsr];
@@ -331,6 +331,24 @@ function batidas_garantir_cancelamento(): void {
             ADD COLUMN cancelada_motivo VARCHAR(255) NULL,
             ADD COLUMN cancelada_por INT NULL,
             ADD COLUMN cancelada_em DATETIME NULL");
+    }
+    $ok = true;
+}
+
+/**
+ * Garante as colunas de geolocalização em dot_batidas (para batidas via
+ * navegador, que exigem a localização do funcionário). Idempotente.
+ */
+function batidas_garantir_geo(): void {
+    static $ok = false;
+    if ($ok) return;
+    $existe = db()->query("SELECT COUNT(*) FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dot_batidas' AND COLUMN_NAME = 'latitude'")->fetchColumn();
+    if (!$existe) {
+        db()->exec("ALTER TABLE dot_batidas
+            ADD COLUMN latitude DECIMAL(10,7) NULL,
+            ADD COLUMN longitude DECIMAL(10,7) NULL,
+            ADD COLUMN precisao_metros FLOAT NULL");
     }
     $ok = true;
 }

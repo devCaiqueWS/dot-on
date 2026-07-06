@@ -229,6 +229,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f
 </div>
 <?php endif; ?>
 
+<p style="text-align:center;font-size:.72rem;color:#94a3b8;margin:-2px 0 8px">📍 A batida pelo navegador exige a sua localização.</p>
 <div class="progress"><div class="progress-bar" style="width:<?= number_format($pct,1) ?>%"></div></div>
 <div style="display:flex;justify-content:space-between;font-size:.78rem;color:#64748b;margin-top:4px">
 <span><?= $horas_hoje ?>h <?= $mins_hoje ?>min trabalhados</span>
@@ -469,13 +470,43 @@ setInterval(() => {
     }
 }, 1000);
 
+function obterLocalizacao() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) { reject(new Error('Seu dispositivo não suporta geolocalização.')); return; }
+        navigator.geolocation.getCurrentPosition(
+            pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude, precisao: pos.coords.accuracy}),
+            err => {
+                let msg = 'Não foi possível obter sua localização.';
+                if (err.code === 1) msg = 'Você precisa PERMITIR o acesso à localização para bater ponto pelo navegador.';
+                else if (err.code === 2) msg = 'Localização indisponível. Ligue o GPS/serviços de localização e tente de novo.';
+                else if (err.code === 3) msg = 'Tempo esgotado ao obter a localização. Tente novamente.';
+                reject(new Error(msg));
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+}
+
 async function baterPonto(tipo) {
     if (!confirm('Confirmar batida: ' + tipo.replace('_',' ') + '?')) return;
+    // Localização é obrigatória para bater ponto pelo navegador
+    let loc;
+    try {
+        loc = await obterLocalizacao();
+    } catch(e) {
+        alert('📍 ' + e.message);
+        return;
+    }
     try {
         const r = await fetch(API + '/batida', {
             method: 'POST',
             headers: {'Content-Type':'application/json', 'X-Auth-Token': token},
-            body: JSON.stringify({tipo, momento: new Date().toISOString().replace('T',' ').substring(0,19), hostname: 'web-portal'})
+            body: JSON.stringify({
+                tipo,
+                momento: new Date().toISOString().replace('T',' ').substring(0,19),
+                hostname: 'web-portal', origem: 'web',
+                latitude: loc.latitude, longitude: loc.longitude, precisao: loc.precisao
+            })
         });
         const j = await r.json();
         if (j.ok) {

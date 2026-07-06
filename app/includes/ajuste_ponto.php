@@ -112,7 +112,7 @@ function ap_adicionar_batida(int $empresa_id, int $usuario_id, string $tipo, str
         return ['ok'=>false, 'msg'=>'Erro ao inserir a batida.'];
     }
     try { jus_recalcular_sessao((int)$sessao_id); } catch (Throwable $e) {}
-    try { crp_emitir($batida_id, false); } catch (Throwable $e) {}
+    try { crp_emitir($batida_id, true); } catch (Throwable $e) {}
     auditar($gestor_id, 'ajuste_add_batida', 'batida', $batida_id, ['usuario'=>$usuario_id, 'tipo'=>$tipo, 'momento'=>$momento, 'nsr'=>$nsr, 'motivo'=>$motivo]);
     return ['ok'=>true, 'msg'=>"Batida de ".jus_label_tipo($tipo)." adicionada (NSR ".str_pad((string)$nsr,6,'0',STR_PAD_LEFT).").", 'nsr'=>$nsr];
 }
@@ -184,7 +184,7 @@ function ap_corrigir_horario(int $batida_id, int $empresa_id, string $nova_hora,
     }
     try { if ($b['sessao_id']) jus_recalcular_sessao((int)$b['sessao_id']); } catch (Throwable $e) {}
     try { jus_recalcular_sessao((int)$sessao_id); } catch (Throwable $e) {}
-    try { crp_emitir($novo_id, false); } catch (Throwable $e) {}
+    try { crp_emitir($novo_id, true); } catch (Throwable $e) {}
     auditar($gestor_id, 'ajuste_corrigir_horario', 'batida', $batida_id, ['de'=>$b['momento'], 'para'=>$momento_novo, 'novo_nsr'=>$nsr, 'motivo'=>$motivo]);
     return ['ok'=>true, 'msg'=>"Horário corrigido para ".substr($nova_hora,0,5)." (nova batida NSR ".str_pad((string)$nsr,6,'0',STR_PAD_LEFT).").", 'nsr'=>$nsr];
 }
