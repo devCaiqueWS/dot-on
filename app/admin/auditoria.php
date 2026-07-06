@@ -43,23 +43,23 @@ $batidas = $stmt->fetchAll();
 </div>
 
 <div class="panel">
-    <h2>🔗 Validação da Cadeia de Hashes</h2>
+    <h2><?= icon('auditoria', 18) ?>Validação da Cadeia de Hashes</h2>
     <p style="color:#6b7280;font-size:13px;margin-bottom:12px">
         Recalcula o hash SHA-256 de TODAS as batidas e verifica se cada uma aponta corretamente para o hash anterior.
         Qualquer adulteração no banco será detectada.
     </p>
     <form method="post">
         <?= csrf_field() ?>
-        <button name="validar" value="1" class="btn btn-primary">▶ Executar verificação completa</button>
+        <button name="validar" value="1" class="btn btn-primary"><?= icon('shield', 16) ?>Executar verificação completa</button>
     </form>
 
     <?php if ($validacao): ?>
         <div class="alert <?= $validacao['ok'] ? 'alert-ok' : 'alert-erro' ?>" style="margin-top:16px">
             <?php if ($validacao['ok']): ?>
-                ✅ <b>Cadeia íntegra.</b> Todas as <?= $validacao['verificadas'] ?> batidas foram verificadas com sucesso.<br>
+                <b>Cadeia íntegra.</b> Todas as <?= $validacao['verificadas'] ?> batidas foram verificadas com sucesso.<br>
                 Último hash: <code style="font-size:11px"><?= $validacao['ultimo_hash'] ?></code>
             <?php else: ?>
-                ❌ <b>Cadeia comprometida!</b> Detectadas <?= count($validacao['divergencias']) ?> divergências em <?= $validacao['verificadas'] ?> batidas verificadas.
+                <b>Cadeia comprometida!</b> Detectadas <?= count($validacao['divergencias']) ?> divergências em <?= $validacao['verificadas'] ?> batidas verificadas.
                 <table class="tbl" style="margin-top:12px;background:#fff">
                     <thead><tr><th>NSR</th><th>Problema</th><th>Esperado</th><th>Encontrado</th></tr></thead>
                     <tbody>
@@ -79,7 +79,7 @@ $batidas = $stmt->fetchAll();
 </div>
 
 <div class="panel">
-    <h2>📜 Últimas 50 batidas da cadeia</h2>
+    <h2><?= icon('espelho', 18) ?>Últimas 50 batidas da cadeia</h2>
     <table class="tbl">
         <thead><tr>
             <th>NSR</th><th>Funcionário</th><th>Tipo</th><th>Momento</th>
@@ -97,8 +97,8 @@ $batidas = $stmt->fetchAll();
                     <?php if ($b['extemporanea']): ?><span class="tag" style="background:#fef3c7;color:#854d0e">extemp.</span><?php endif; ?>
                 </td>
                 <td><code class="token" title="<?= $b['hash_registro'] ?>"><?= substr($b['hash_registro'], 0, 10) ?>…</code></td>
-                <td><a href="<?= $url_val ?>" target="_blank" class="btn btn-secondary" style="padding:4px 10px;font-size:11px">🔍 Validar</a></td>
-                <td><?= $b['crp_emitido']?'✓':'—' ?></td>
+                <td><a href="<?= $url_val ?>" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px"><?= icon('search', 13) ?>Validar</a></td>
+                <td><?= $b['crp_emitido'] ? icon('check', 15) : '—' ?></td>
             </tr>
         <?php endforeach; ?>
         </tbody>

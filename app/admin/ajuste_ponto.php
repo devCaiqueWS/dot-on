@@ -43,15 +43,15 @@ $jornada_dias = $func ? jornada_listar($func) : [];
 $func_nome = '';
 foreach ($funcs as $f) if ((int)$f['id'] === $func) $func_nome = $f['nome_completo'];
 
-$ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','saida'=>'⏹'];
+$ICON = ['entrada'=>icon('login',18),'saida_intervalo'=>icon('pause',18),'retorno_intervalo'=>icon('play',18),'saida'=>icon('logout',18)];
 ?>
 <style>
 .ap-grid{display:grid;grid-template-columns:1fr;gap:16px}
 .ap-batida{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px}
 .ap-batida.anulada{opacity:.6;background:#fef2f2;border-color:#fecaca}
 .ap-batida.anulada .hora{text-decoration:line-through}
-.ap-batida .ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
-.ic.entrada{background:#16a34a}.ic.saida_intervalo{background:#f59e0b}.ic.retorno_intervalo{background:#2563eb}.ic.saida{background:#dc2626}
+.ap-batida .ap-ic{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.ap-ic.entrada{background:#16a34a}.ap-ic.saida_intervalo{background:#f59e0b}.ap-ic.retorno_intervalo{background:#2563eb}.ap-ic.saida{background:#dc2626}
 .ap-batida .det{flex:1}
 .ap-batida .hora{font-size:1.1rem;font-weight:700;color:#0c4a6e}
 .ap-batida .sub{font-size:.76rem;color:#64748b}
@@ -70,7 +70,7 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
 <?php if ($msg): ?><div class="alert alert-<?= $msg_tipo==='ok'?'ok':'erro' ?>"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
 
 <div class="alert alert-info" style="background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd;border-radius:10px;padding:12px 14px;margin-bottom:14px">
-    🛠 Ajustes de ponto ficam <strong>registrados na auditoria</strong>. Anular uma batida <strong>não a apaga</strong> — ela sai do espelho e do cálculo de horas, mas continua no arquivo fiscal (AFD) para preservar a integridade legal (Portaria MTP 671).
+    <span style="display:flex;align-items:center;gap:8px"><?= icon('ajuste', 17) ?><span>Ajustes de ponto ficam <strong>registrados na auditoria</strong>. Anular uma batida <strong>não a apaga</strong> — ela sai do espelho e do cálculo de horas, mas continua no arquivo fiscal (AFD) para preservar a integridade legal (Portaria MTP 671).</span></span>
 </div>
 
 <div class="panel">
@@ -93,14 +93,14 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
 
     <!-- BATIDAS DO DIA -->
     <div class="panel">
-        <h2>⏱ Batidas de <?= htmlspecialchars($func_nome) ?> em <?= date('d/m/Y', strtotime($data)) ?></h2>
+        <h2><?= icon('batidas', 18) ?>Batidas de <?= htmlspecialchars($func_nome) ?> em <?= date('d/m/Y', strtotime($data)) ?></h2>
 
         <?php if (!$batidas): ?>
             <p class="empty">Nenhuma batida neste dia.</p>
         <?php else: foreach ($batidas as $b):
             $anulada = (int)($b['cancelada'] ?? 0) === 1; ?>
             <div class="ap-batida <?= $anulada?'anulada':'' ?>">
-                <div class="ic <?= $b['tipo'] ?>"><?= $ICON[$b['tipo']] ?? '·' ?></div>
+                <div class="ap-ic <?= $b['tipo'] ?>"><?= $ICON[$b['tipo']] ?? '' ?></div>
                 <div class="det">
                     <span class="hora"><?= date('H:i', strtotime($b['momento'])) ?></span>
                     <span style="color:#475569;font-size:.9rem"><?= jus_label_tipo($b['tipo']) ?></span>
@@ -130,8 +130,8 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
                 </div>
                 <?php if (!$anulada): ?>
                 <div class="acts">
-                    <button class="btn btn-sm" onclick="toggle('corr-<?= $b['id'] ?>')" title="Corrigir horário">✏️</button>
-                    <button class="btn btn-sm" onclick="toggle('anul-<?= $b['id'] ?>')" title="Anular (bateu por engano)">🗑</button>
+                    <button class="btn btn-secondary btn-sm" onclick="toggle('corr-<?= $b['id'] ?>')" title="Corrigir horário"><?= icon('edit', 15) ?></button>
+                    <button class="btn btn-secondary btn-sm" onclick="toggle('anul-<?= $b['id'] ?>')" title="Anular (bateu por engano)"><?= icon('trash', 15) ?></button>
                 </div>
                 <?php endif; ?>
             </div>
@@ -140,7 +140,7 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
 
     <!-- ADICIONAR BATIDA -->
     <div class="panel">
-        <h2>➕ Adicionar batida (esqueceu de bater)</h2>
+        <h2><?= icon('plus', 18) ?>Adicionar batida (esqueceu de bater)</h2>
         <form method="post" class="form-inline">
             <?= csrf_field() ?>
             <input type="hidden" name="acao" value="add_batida">
@@ -163,7 +163,7 @@ $ICON = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','s
 
     <!-- JORNADA DO FUNCIONÁRIO POR DIA DA SEMANA -->
     <div class="panel">
-        <h2>🕗 Jornada de <?= htmlspecialchars($func_nome) ?></h2>
+        <h2><?= icon('clock', 18) ?>Jornada de <?= htmlspecialchars($func_nome) ?></h2>
         <p style="font-size:.82rem;color:#64748b;margin-bottom:10px">Cada funcionário tem a sua jornada. O <strong>almoço é uma duração</strong> (minutos) definida por você — o funcionário cumpre o tempo quando quiser, sem horário fixo.</p>
         <form method="post">
             <?= csrf_field() ?>

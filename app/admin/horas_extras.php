@@ -69,8 +69,8 @@ $lista = $stmt->fetchAll();
                 <input type="hidden" name="id" value="<?= $h['id'] ?>">
                 <input type="number" name="minutos_aprovados" value="<?= $h['minutos_solicitados'] ?>" min="0" max="<?= $h['minutos_solicitados'] ?>" title="Minutos a aprovar">
                 <input type="text" name="motivo" placeholder="Motivo / observação" style="flex:1">
-                <button name="acao" value="aprovar" class="btn btn-success">✓ Aprovar</button>
-                <button name="acao" value="rejeitar" class="btn btn-danger">✗ Rejeitar</button>
+                <button name="acao" value="aprovar" class="btn btn-success"><?= icon('check', 16) ?>Aprovar</button>
+                <button name="acao" value="rejeitar" class="btn btn-danger"><?= icon('x', 16) ?>Rejeitar</button>
             </form>
             <?php endif; ?>
         </div>

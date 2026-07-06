@@ -2,9 +2,42 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/tenant.php';
+require_once __DIR__ . '/../includes/icons.php';
 $user = requer_login();
 $empresa = tenant_empresa();
 $pagina = $pagina ?? 'dashboard';
+
+// Itens do menu: [slug, arquivo, ícone, rótulo]
+$nav_itens = [
+    ['dashboard',      'index.php',         'dashboard',      'Dashboard'],
+    ['funcionarios',   'funcionarios.php',  'funcionarios',   'Funcionários'],
+    ['empresa',        'empresa.php',       'empresa',        'Empresa'],
+    ['certificado',    'certificado.php',   'certificado',    'Certificado ICP'],
+    ['batidas',        'batidas.php',       'batidas',        'Batidas'],
+    ['ajuste_ponto',   'ajuste_ponto.php',  'ajuste',         'Ajuste de Ponto'],
+    ['auditoria',      'auditoria.php',     'auditoria',      'Auditoria Fiscal'],
+    ['extras',         'horas_extras.php',  'extras',         'Horas Extras'],
+    ['justificativas', 'justificativas.php','justificativas', 'Justificativas'],
+    ['banco_horas',    'banco_horas.php',   'banco_horas',    'Banco de Horas'],
+    ['espelho',        'espelho.php',       'espelho',        'Espelho de Ponto'],
+    ['relatorios',     'relatorios.php',    'relatorios',     'Relatórios & AFD/AEJ'],
+    ['config',         'config.php',        'config',         'Configurações'],
+    ['downloads',      'downloads.php',     'downloads',      'Agente Windows'],
+];
+
+// Badges de pendências (extras e justificativas)
+$badges = ['extras' => 0, 'justificativas' => 0];
+try {
+    $stmt = db()->prepare("SELECT COUNT(*) FROM dot_horas_extras he
+                           JOIN dot_usuarios u ON u.id = he.usuario_id
+                           WHERE u.empresa_id = ? AND he.status='pendente' AND he.minutos_solicitados > 0");
+    $stmt->execute([$user['empresa_id']]);
+    $badges['extras'] = (int)$stmt->fetchColumn();
+} catch (Throwable $e) {}
+try {
+    require_once __DIR__ . '/../includes/justificativas.php';
+    $badges['justificativas'] = (int)jus_contar_pendentes((int)$user['empresa_id']);
+} catch (Throwable $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -12,62 +45,62 @@ $pagina = $pagina ?? 'dashboard';
 <meta charset="UTF-8">
 <title>DOT-ON · <?= htmlspecialchars($titulo ?? 'Painel') ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>(function(){try{if(localStorage.getItem('dot-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body class="admin-body">
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
+<label for="nav-toggle" class="nav-burger" aria-label="Menu">
+    <span></span><span></span><span></span>
+</label>
 <aside class="sidebar">
-    <div class="logo">⏱ <span>DOT-ON</span></div>
+    <div class="brand"><?= icon_logo(30) ?><span>DOT-ON</span></div>
     <?php if ($empresa): ?>
-    <div style="padding:0 16px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:14px">
-        <small style="opacity:.6;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em">Empresa</small>
-        <div style="font-weight:600;color:#38bdf8;font-size:.92rem;margin-top:3px">🏢 <?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></div>
-        <?php if ($empresa['plano'] === 'free' && $empresa['trial_expira']): 
+    <div class="brand-company">
+        <span class="lbl">Empresa</span>
+        <div class="name"><?= icon('empresa', 15) ?><span><?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></span></div>
+        <?php if ($empresa['plano'] === 'free' && $empresa['trial_expira']):
             $dias = max(0, (strtotime($empresa['trial_expira']) - time()) / 86400);
         ?>
-        <div style="font-size:.72rem;opacity:.8;margin-top:4px"><?= round($dias) ?> dias de trial restantes</div>
+        <div class="trial"><?= round($dias) ?> dias de trial restantes</div>
         <?php endif; ?>
     </div>
     <?php endif; ?>
     <nav>
-        <a href="index.php" class="<?= $pagina==='dashboard'?'active':'' ?>">📊 Dashboard</a>
-        <a href="funcionarios.php" class="<?= $pagina==='funcionarios'?'active':'' ?>">👥 Funcionários</a>
-        <a href="empresa.php" class="<?= $pagina==='empresa'?'active':'' ?>">🏢 Empresa</a>
-        <a href="certificado.php" class="<?= $pagina==='certificado'?'active':'' ?>">🔐 Certificado ICP</a>
-        <a href="batidas.php" class="<?= $pagina==='batidas'?'active':'' ?>">⏱ Batidas</a>
-        <a href="ajuste_ponto.php" class="<?= $pagina==='ajuste_ponto'?'active':'' ?>">🛠 Ajuste de Ponto</a>
-        <a href="auditoria.php" class="<?= $pagina==='auditoria'?'active':'' ?>">🔗 Auditoria Fiscal</a>
-        <a href="horas_extras.php" class="<?= $pagina==='extras'?'active':'' ?>">⏰ Horas Extras
-            <?php
-            try {
-                $stmt = db()->prepare("SELECT COUNT(*) FROM dot_horas_extras he 
-                                       JOIN dot_usuarios u ON u.id = he.usuario_id
-                                       WHERE u.empresa_id = ? AND he.status='pendente' AND he.minutos_solicitados > 0");
-                $stmt->execute([$user['empresa_id']]);
-                $pend = (int)$stmt->fetchColumn();
-                if ($pend > 0) echo "<span class='badge'>$pend</span>";
-            } catch (Throwable $e) {}
-            ?>
+        <?php foreach ($nav_itens as [$slug, $arquivo, $ic, $rotulo]):
+            $b = $badges[$slug] ?? 0; ?>
+        <a href="<?= $arquivo ?>" class="<?= $pagina === $slug ? 'active' : '' ?>">
+            <?= icon($ic) ?><span class="nav-label"><?= $rotulo ?></span>
+            <?php if ($b > 0): ?><span class="badge"><?= $b ?></span><?php endif; ?>
         </a>
-        <a href="justificativas.php" class="<?= $pagina==='justificativas'?'active':'' ?>">📝 Justificativas
-            <?php
-            try {
-                require_once __DIR__ . '/../includes/justificativas.php';
-                $jpend = jus_contar_pendentes((int)$user['empresa_id']);
-                if ($jpend > 0) echo "<span class='badge'>$jpend</span>";
-            } catch (Throwable $e) {}
-            ?>
-        </a>
-        <a href="banco_horas.php" class="<?= $pagina==='banco_horas'?'active':'' ?>">⚖ Banco de Horas</a>
-        <a href="espelho.php" class="<?= $pagina==='espelho'?'active':'' ?>">📋 Espelho de Ponto</a>
-        <a href="relatorios.php" class="<?= $pagina==='relatorios'?'active':'' ?>">📊 Relatórios & AFD/AEJ</a>
-        <a href="config.php" class="<?= $pagina==='config'?'active':'' ?>">⚙ Configurações</a>
-        <a href="downloads.php" class="<?= $pagina==='downloads'?'active':'' ?>">⬇ Agente Windows</a>
+        <?php endforeach; ?>
     </nav>
+    <div class="theme-row">
+        <span class="theme-lbl"><?= icon('moon', 16) ?><span>Modo escuro</span></span>
+        <label class="switch">
+            <input type="checkbox" id="theme-switch">
+            <span class="slider"></span>
+        </label>
+    </div>
     <div class="userbox">
-        <strong><?= htmlspecialchars($user['nome_completo']) ?></strong>
-        <small><?= htmlspecialchars($user['perfil']) ?></small>
-        <a href="logout.php">Sair</a>
+        <div class="u-info">
+            <strong><?= htmlspecialchars($user['nome_completo']) ?></strong>
+            <small><?= htmlspecialchars($user['perfil']) ?></small>
+        </div>
+        <a class="logout" href="logout.php"><?= icon('logout', 16) ?><span>Sair</span></a>
     </div>
 </aside>
+<script>
+(function(){
+    var sw = document.getElementById('theme-switch');
+    if (!sw) return;
+    sw.checked = document.documentElement.getAttribute('data-theme') === 'dark';
+    sw.addEventListener('change', function(){
+        if (sw.checked) { document.documentElement.setAttribute('data-theme','dark'); }
+        else { document.documentElement.removeAttribute('data-theme'); }
+        try { localStorage.setItem('dot-theme', sw.checked ? 'dark' : 'light'); } catch(e){}
+    });
+})();
+</script>
 <main class="content">
     <h1><?= htmlspecialchars($titulo ?? 'Painel') ?></h1>

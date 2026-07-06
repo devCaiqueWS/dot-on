@@ -162,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirmar'])) {
     }
     if ($enviar_email) email_processar_fila(50);
     unset($_SESSION['preview_funcionarios']);
-    $msg = "✅ <strong>" . count($importados) . " funcionários importados</strong>" . ($enviar_email ? " e e-mails enviados" : "");
+    $msg = "<strong>" . count($importados) . " funcionários importados</strong>" . ($enviar_email ? " e e-mails enviados" : "");
     if ($erros_imp) $msg .= ". <details><summary>" . count($erros_imp) . " erros</summary><ul>";
     foreach ($erros_imp as $e) $msg .= "<li>$e</li>";
     if ($erros_imp) $msg .= "</ul></details>";
@@ -175,26 +175,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirmar'])) {
 
 <?php if (!$preview): ?>
 <div class="panel">
-<h2>📤 Importar funcionários via planilha</h2>
-<p style="color:#94a3b8;margin-bottom:18px">Envie um arquivo <strong>CSV ou XLSX</strong> com as colunas: <code>nome, email, cpf, matricula</code> (cpf e matricula opcionais).</p>
+<h2><?= icon('upload', 18) ?>Importar funcionários via planilha</h2>
+<p style="color:#64748b;margin-bottom:18px">Envie um arquivo <strong>CSV ou XLSX</strong> com as colunas: <code>nome, email, cpf, matricula</code> (cpf e matricula opcionais).</p>
 
 <form method="post" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:14px">
 <?= csrf_field() ?>
-<input type="file" name="arquivo" accept=".csv,.xlsx" required style="padding:10px;border:2px dashed #475569;border-radius:8px;background:#1e293b;color:#e2e8f0">
-<button class="btn btn-primary">📋 Analisar arquivo</button>
+<input type="file" name="arquivo" accept=".csv,.xlsx" required style="padding:12px;border:2px dashed #cbd5e1;border-radius:10px;background:#f8fafc;color:#334155">
+<button class="btn btn-primary"><?= icon('search', 16) ?>Analisar arquivo</button>
 </form>
 
 <details style="margin-top:18px">
-<summary style="cursor:pointer;color:#38bdf8">📥 Baixar modelo de planilha</summary>
-<p style="margin:10px 0;color:#94a3b8">Use este modelo para garantir o formato correto:</p>
-<a href="data:text/csv;base64,<?= base64_encode("nome,email,cpf,matricula\nMaria Silva,maria@empresa.com.br,12345678901,001\nJoão Souza,joao@empresa.com.br,23456789012,002\n") ?>" download="modelo_funcionarios.csv" class="btn">⬇ Baixar modelo_funcionarios.csv</a>
+<summary style="cursor:pointer;color:#1d4ed8;font-weight:600">Baixar modelo de planilha</summary>
+<p style="margin:10px 0;color:#64748b">Use este modelo para garantir o formato correto:</p>
+<a href="data:text/csv;base64,<?= base64_encode("nome,email,cpf,matricula\nMaria Silva,maria@empresa.com.br,12345678901,001\nJoão Souza,joao@empresa.com.br,23456789012,002\n") ?>" download="modelo_funcionarios.csv" class="btn btn-secondary"><?= icon('download', 16) ?>Baixar modelo_funcionarios.csv</a>
 </details>
 </div>
 <?php else: ?>
 
 <div class="panel">
-<h2>👀 Pré-visualização: <?= count($preview) ?> funcionários encontrados</h2>
-<p style="color:#94a3b8;margin-bottom:14px">Confira os dados e clique em <strong>Importar</strong> para confirmar.</p>
+<h2><?= icon('search', 18) ?>Pré-visualização: <?= count($preview) ?> funcionários encontrados</h2>
+<p style="color:#64748b;margin-bottom:14px">Confira os dados e clique em <strong>Importar</strong> para confirmar.</p>
 
 <table class="tbl">
 <thead><tr><th>#</th><th>Nome</th><th>E-mail</th><th>CPF</th><th>Matrícula</th></tr></thead>
@@ -214,12 +214,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['confirmar'])) {
 <form method="post" style="margin-top:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
 <?= csrf_field() ?>
 <input type="hidden" name="confirmar" value="1">
-<label style="display:flex;align-items:center;gap:6px;color:#e2e8f0">
+<label style="display:flex;align-items:center;gap:6px;color:#334155">
 <input type="checkbox" name="enviar_email" value="1" checked>
-📧 Enviar e-mail de boas-vindas com senha temporária para cada funcionário
+Enviar e-mail de boas-vindas com senha temporária para cada funcionário
 </label>
-<button class="btn btn-primary" type="submit" onclick="return confirm('Importar <?= count($preview) ?> funcionários?')">✅ Confirmar Importação</button>
-<a href="funcionarios_importar.php" class="btn">❌ Cancelar</a>
+<button class="btn btn-primary" type="submit" onclick="return confirm('Importar <?= count($preview) ?> funcionários?')"><?= icon('check', 16) ?>Confirmar Importação</button>
+<a href="funcionarios_importar.php" class="btn btn-secondary"><?= icon('x', 16) ?>Cancelar</a>
 </form>
 </div>
 

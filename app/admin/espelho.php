@@ -49,7 +49,7 @@ $total_ocioso = array_sum(array_column($sessoes, 'minutos_ociosos'));
     </label>
     <label>Mês <input type="month" name="mes" value="<?= htmlspecialchars($mes) ?>"></label>
     <button class="btn btn-primary">Gerar</button>
-    <a href="espelho_pdf.php?func=<?= $func ?>&mes=<?= $mes ?>" class="btn btn-secondary" target="_blank">📄 Exportar PDF</a>
+    <a href="espelho_pdf.php?func=<?= $func ?>&mes=<?= $mes ?>" class="btn btn-secondary" target="_blank"><?= icon('print', 16) ?>Exportar PDF</a>
 </form>
 
 <div class="cards">

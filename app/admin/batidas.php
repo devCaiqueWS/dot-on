@@ -44,7 +44,7 @@ $funcs = $stmt->fetchAll();
                 <td><?= htmlspecialchars($b['nome_completo']) ?> <small>(<?= $b['matricula'] ?>)</small></td>
                 <td><span class="tag tag-<?= $b['tipo'] ?>"><?= str_replace('_',' ',$b['tipo']) ?></span></td>
                 <td><?= date('H:i:s', strtotime($b['momento'])) ?></td>
-                <td><small><?= $b['origem'] ?> · <?= htmlspecialchars($b['hostname'] ?? '') ?><?php if (!empty($b['latitude'])): ?> · <a href="https://www.google.com/maps?q=<?= (float)$b['latitude'] ?>,<?= (float)$b['longitude'] ?>" target="_blank" title="Ver localização no mapa (precisão ~<?= (int)($b['precisao_metros'] ?? 0) ?>m)">📍 mapa</a><?php endif; ?></small></td>
+                <td><small><?= $b['origem'] ?> · <?= htmlspecialchars($b['hostname'] ?? '') ?><?php if (!empty($b['latitude'])): ?> · <a href="https://www.google.com/maps?q=<?= (float)$b['latitude'] ?>,<?= (float)$b['longitude'] ?>" target="_blank" title="Ver localização no mapa (precisão ~<?= (int)($b['precisao_metros'] ?? 0) ?>m)">mapa</a><?php endif; ?></small></td>
                 <td><code class="token" title="<?= $b['hash_registro'] ?>"><?= substr($b['hash_registro'], 0, 12) ?>…</code></td>
             </tr>
         <?php endforeach; if (!$batidas): ?>

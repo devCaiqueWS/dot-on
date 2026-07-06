@@ -44,8 +44,8 @@ $serie = $stmt->fetchAll();
     <label>Início <input type="date" name="inicio" value="<?= htmlspecialchars($inicio) ?>"></label>
     <label>Fim <input type="date" name="fim" value="<?= htmlspecialchars($fim) ?>"></label>
     <button class="btn btn-primary">Filtrar</button>
-    <a href="export_afd.php?inicio=<?= $inicio ?>&fim=<?= $fim ?>" class="btn btn-success">📄 Exportar AFD</a>
-    <a href="export_aej.php?inicio=<?= $inicio ?>&fim=<?= $fim ?>" class="btn btn-success">📋 Exportar AEJ</a>
+    <a href="export_afd.php?inicio=<?= $inicio ?>&fim=<?= $fim ?>" class="btn btn-success"><?= icon('download', 16) ?>Exportar AFD</a>
+    <a href="export_aej.php?inicio=<?= $inicio ?>&fim=<?= $fim ?>" class="btn btn-success"><?= icon('download', 16) ?>Exportar AEJ</a>
 </form>
 
 <div class="cards">
@@ -57,12 +57,12 @@ $serie = $stmt->fetchAll();
 </div>
 
 <div class="panel">
-    <h2>📊 Distribuição diária</h2>
+    <h2><?= icon('relatorios', 18) ?>Distribuição diária</h2>
     <canvas id="grafico" height="80"></canvas>
 </div>
 
 <div class="panel">
-    <h2>🏆 Ranking por funcionário</h2>
+    <h2><?= icon('funcionarios', 18) ?>Ranking por funcionário</h2>
     <table class="tbl">
         <thead><tr><th>#</th><th>Funcionário</th><th>Matrícula</th><th>Dias</th><th>Trabalhadas</th><th>Ociosas</th><th>Extras</th></tr></thead>
         <tbody>

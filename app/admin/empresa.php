@@ -31,7 +31,7 @@ $e = $stmt->fetch();
 <?php if (!empty($msg)): ?><div class="alert alert-ok"><?= $msg ?></div><?php endif; ?>
 
 <div class="panel">
-    <h2>🏢 Identificação Fiscal da Empresa</h2>
+    <h2><?= icon('empresa', 18) ?>Identificação Fiscal da Empresa</h2>
     <p style="color:#6b7280;font-size:13px;margin-bottom:16px">
         Esses dados são exportados no cabeçalho do AFD/AEJ conforme Portaria MTP 671/2021.
         Mantenha-os atualizados.
@@ -73,7 +73,7 @@ $e = $stmt->fetch();
                 <input name="cnae" value="<?= htmlspecialchars($e['cnae'] ?? '') ?>" placeholder="0000-0/00">
             </label>
         </div>
-        <h3 style="margin-top:20px;font-size:15px">📟 Identificação do REP-P</h3>
+        <h3 style="margin-top:20px;font-size:15px;display:flex;align-items:center;gap:8px"><?= icon('batidas', 17) ?>Identificação do REP-P</h3>
         <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:16px">
             <label class="fld"><span>Modelo</span>
                 <input name="modelo_rep" value="<?= htmlspecialchars($e['modelo_rep'] ?? 'REP-P') ?>">
@@ -85,7 +85,7 @@ $e = $stmt->fetch();
                 <input name="versao_layout" value="<?= htmlspecialchars($e['versao_layout'] ?? '003') ?>" maxlength="3">
             </label>
         </div>
-        <button class="btn btn-primary" style="margin-top:16px">💾 Salvar dados da empresa</button>
+        <button class="btn btn-primary" style="margin-top:16px"><?= icon('save', 17) ?>Salvar dados da empresa</button>
     </form>
 </div>
 

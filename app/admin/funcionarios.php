@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($user['perfil'], ['admin',
             $url_painel = 'https://dot-on.com.br/app/admin/login.php';
             [$assunto, $html, $texto] = email_template_boasvindas_funcionario($u['nome_completo'], $empresa['nome_fantasia'] ?: $empresa['razao_social'], $u['email'], $senha_nova, $url_exe, $url_painel);
             email_enviar($u['email'], $u['nome_completo'], $assunto, $html, $texto, $emp_id);
-            $msg = "✅ Nova senha enviada para <strong>" . htmlspecialchars($u['email']) . "</strong>";
+            $msg = "Nova senha enviada para <strong>" . htmlspecialchars($u['email']) . "</strong>";
         }
     }
     // Ativar/Desativar
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($user['perfil'], ['admin',
         $ativo = $_POST['acao'] === 'ativar' ? 1 : 0;
         db()->prepare("UPDATE dot_usuarios SET ativo=? WHERE id=? AND empresa_id=?")
             ->execute([$ativo, $uid, $emp_id]);
-        $msg = $ativo ? "✅ Funcionário ativado" : "🚫 Funcionário desativado";
+        $msg = $ativo ? "Funcionário ativado" : "Funcionário desativado";
     }
     // Criar novo
     elseif (!empty($_POST['nome']) && !empty($_POST['email'])) {
@@ -78,9 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($user['perfil'], ['admin',
                     $url_painel = 'https://dot-on.com.br/app/admin/login.php';
                     [$assunto, $html, $texto] = email_template_boasvindas_funcionario($nome, $empresa['nome_fantasia'] ?: $empresa['razao_social'], $email, $senha_temp, $url_exe, $url_painel);
                     email_enviar($email, $nome, $assunto, $html, $texto, $emp_id);
-                    $msg = "✅ Funcionário criado e e-mail de boas-vindas enviado para <strong>$email</strong>";
+                    $msg = "Funcionário criado e e-mail de boas-vindas enviado para <strong>$email</strong>";
                 } else {
-                    $msg = "✅ Funcionário criado. Senha temporária: <code>$senha_temp</code> (anote ou copie agora)";
+                    $msg = "Funcionário criado. Senha temporária: <code>$senha_temp</code> (anote ou copie agora)";
                 }
             } catch (Throwable $e) {
                 error_log("DOT-ON funcionarios criar: " . $e->getMessage());
@@ -100,11 +100,11 @@ $stmt->execute([$emp_id]);
 $lista = $stmt->fetchAll();
 ?>
 <?php if ($msg): ?><div class="alert alert-ok"><?= $msg ?></div><?php endif; ?>
-<?php if ($erro): ?><div class="alert alert-erro">❌ <?= htmlspecialchars($erro) ?></div><?php endif; ?>
+<?php if ($erro): ?><div class="alert alert-erro"><?= htmlspecialchars($erro) ?></div><?php endif; ?>
 
 <?php if (in_array($user['perfil'], ['admin','rh','gestor'])): ?>
 <div class="panel">
-    <h2>➕ Adicionar funcionário</h2>
+    <h2><?= icon('plus', 18) ?>Adicionar funcionário</h2>
     <form method="post" class="form-inline">
         <?= csrf_field() ?>
         <input name="matricula" placeholder="Matrícula (opcional)">
@@ -122,15 +122,15 @@ $lista = $stmt->fetchAll();
         </label>
         <button class="btn btn-primary">Adicionar</button>
     </form>
-    <p style="margin-top:10px;font-size:.85rem;color:#94a3b8">
-    💡 <strong>Importar em lote:</strong> Para adicionar vários funcionários de uma vez, 
-    <a href="funcionarios_importar.php" style="color:#38bdf8">use o importador de planilha CSV/XLSX</a>.
+    <p style="margin-top:10px;font-size:.85rem;color:#64748b;display:flex;align-items:center;gap:6px">
+    <?= icon('lightbulb', 15) ?><span><strong>Importar em lote:</strong> Para adicionar vários funcionários de uma vez,
+    <a href="funcionarios_importar.php">use o importador de planilha CSV/XLSX</a>.</span>
     </p>
 </div>
 <?php endif; ?>
 
 <div class="panel">
-    <h2>📋 Funcionários da <?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?> (<?= count($lista) ?>)</h2>
+    <h2><?= icon('funcionarios', 18) ?>Funcionários da <?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?> (<?= count($lista) ?>)</h2>
     <table class="tbl">
         <thead><tr><th>Mat.</th><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Último login</th><th>Ações</th></tr></thead>
         <tbody>
@@ -138,7 +138,7 @@ $lista = $stmt->fetchAll();
             <tr style="<?= $u['ativo']?'':'opacity:.55' ?>">
                 <td><code><?= htmlspecialchars($u['matricula']) ?></code></td>
                 <td><?= htmlspecialchars($u['nome_completo']) ?>
-                    <?php if ($u['precisa_trocar_senha']): ?><span class="tag" style="background:#fef3c7;color:#92400e;font-size:.7rem">🔑 1º login</span><?php endif; ?>
+                    <?php if ($u['precisa_trocar_senha']): ?><span class="tag" style="background:#fef3c7;color:#92400e;font-size:.7rem">1º login</span><?php endif; ?>
                 </td>
                 <td><?= htmlspecialchars($u['email']) ?></td>
                 <td><span class="tag"><?= $u['perfil'] ?></span></td>
@@ -150,19 +150,19 @@ $lista = $stmt->fetchAll();
                         <?= csrf_field() ?>
                         <input type="hidden" name="acao" value="reenviar">
                         <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
-                        <button class="btn btn-sm" title="Reenviar credenciais">📧</button>
+                        <button class="btn btn-secondary btn-sm" title="Reenviar credenciais"><?= icon('send', 16) ?></button>
                     </form>
                     <form method="post" style="display:inline">
                         <?= csrf_field() ?>
                         <input type="hidden" name="acao" value="<?= $u['ativo']?'desativar':'ativar' ?>">
                         <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
-                        <button class="btn btn-sm" title="<?= $u['ativo']?'Desativar':'Ativar' ?>"><?= $u['ativo']?'🚫':'✅' ?></button>
+                        <button class="btn btn-secondary btn-sm" title="<?= $u['ativo']?'Desativar':'Ativar' ?>"><?= $u['ativo'] ? icon('power',16) : icon('check',16) ?></button>
                     </form>
                     <?php endif; ?>
                 </td>
             </tr>
         <?php endforeach; if (!$lista): ?>
-            <tr><td colspan="7" class="empty">📭 Nenhum funcionário cadastrado ainda. Use o formulário acima ou <a href="funcionarios_importar.php">importe uma planilha</a>.</td></tr>
+            <tr><td colspan="7" class="empty">Nenhum funcionário cadastrado ainda. Use o formulário acima ou <a href="funcionarios_importar.php">importe uma planilha</a>.</td></tr>
         <?php endif; ?>
         </tbody>
     </table>

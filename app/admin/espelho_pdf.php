@@ -62,7 +62,7 @@ tr:nth-child(even){background:#f9fafb}
 @media print{.no-print{display:none}body{padding:0}}
 </style></head><body>
 <div class="no-print">
-    <button onclick="window.print()" style="padding:10px 20px;background:#2563eb;color:#fff;border:none;border-radius:4px;cursor:pointer">🖨 Imprimir / Salvar PDF</button>
+    <button onclick="window.print()" style="padding:10px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">Imprimir / Salvar PDF</button>
     <a href="espelho.php?func=<?= $func ?>&mes=<?= $mes ?>" style="margin-left:10px">← Voltar</a>
 </div>
 

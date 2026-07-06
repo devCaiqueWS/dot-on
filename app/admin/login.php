@@ -5,6 +5,7 @@
 session_start();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/icons.php';
 
 $erro = '';
 // Evita open redirect: só aceita caminhos locais relativos (sem host/esquema).
@@ -43,36 +44,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <title>Login · DOT-ON</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:linear-gradient(135deg,#0c4a6e,#0284c7);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;color:#1e293b}
-.card{background:white;border-radius:14px;padding:40px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-.brand{text-align:center;margin-bottom:28px}
-.brand .logo{font-size:1.8rem;font-weight:800;color:#0284c7;margin-bottom:6px}
-.brand .sub{color:#64748b;font-size:.9rem}
-.alert{padding:11px 14px;border-radius:8px;font-size:.88rem;margin-bottom:16px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b}
-.alert.success{background:#d1fae5;border-color:#6ee7b7;color:#065f46}
+body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;color:#0f172a;min-height:100vh;
+    display:flex;align-items:center;justify-content:center;padding:20px;-webkit-font-smoothing:antialiased;
+    background:radial-gradient(1100px 600px at 100% -10%,#dbeafe 0,transparent 55%),
+               radial-gradient(900px 500px at -10% 110%,#d1fae5 0,transparent 55%),#f8fafc}
+.card{background:#fff;border-radius:20px;padding:38px 36px;width:100%;max-width:410px;
+    border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,.10)}
+.brand{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px}
+.brand .mark{display:flex;align-items:center;gap:10px;font-size:1.5rem;font-weight:800;letter-spacing:-.02em}
+.brand .sub{color:#64748b;font-size:.88rem;margin-top:8px}
+.alert{display:flex;align-items:center;gap:9px;padding:11px 14px;border-radius:10px;font-size:.86rem;margin-bottom:16px;
+    background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+.alert svg{flex-shrink:0}
+.alert.success{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
 .field{margin-bottom:14px}
-.field label{display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px}
-.field input{width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:.95rem;outline:none;transition:all .15s}
-.field input:focus{border-color:#0284c7;box-shadow:0 0 0 3px rgba(2,132,199,.15)}
-.btn{width:100%;padding:13px;border-radius:8px;border:none;background:linear-gradient(135deg,#0284c7,#38bdf8);color:white;font-size:1rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(2,132,199,.3);margin-top:6px}
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(2,132,199,.4)}
+.field label{display:block;font-size:.8rem;font-weight:600;color:#334155;margin-bottom:6px}
+.field input{width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:10px;font-size:.95rem;outline:none;transition:all .15s;font-family:inherit}
+.field input:focus{border-color:#1d4ed8;box-shadow:0 0 0 3px rgba(29,78,216,.14)}
+.btn{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:10px;
+    border:none;background:#1d4ed8;color:#fff;font-size:.98rem;font-weight:700;cursor:pointer;
+    box-shadow:0 4px 12px rgba(29,78,216,.28);margin-top:6px;transition:all .15s;font-family:inherit}
+.btn:hover{background:#1e40af;box-shadow:0 6px 18px rgba(29,78,216,.36)}
 .links{margin-top:20px;display:flex;justify-content:space-between;font-size:.85rem}
-.links a{color:#0284c7;text-decoration:none;font-weight:500}
+.links a{color:#1d4ed8;text-decoration:none;font-weight:500}
 .links a:hover{text-decoration:underline}
-.divider{margin:20px 0;padding-top:18px;border-top:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:.85rem}
-.divider .new-link{background:linear-gradient(135deg,#10b981,#059669);color:white;display:inline-block;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:10px}
+.divider{margin:22px 0 4px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:.85rem}
+.divider .new-link{display:inline-flex;align-items:center;gap:7px;background:#10b981;color:#fff;padding:10px 22px;
+    border-radius:10px;text-decoration:none;font-weight:600;margin-top:12px;box-shadow:0 4px 12px rgba(16,185,129,.28);transition:all .15s}
+.divider .new-link:hover{background:#059669}
 </style>
 </head>
 <body>
 <form class="card" method="post">
 <div class="brand">
-<div class="logo">⏱ DOT-ON</div>
+<div class="mark"><?= icon_logo(30) ?><span>DOT-ON</span></div>
 <div class="sub">Controle de Ponto Digital</div>
 </div>
 
-<?php if ($erro): ?><div class="alert">❌ <?=htmlspecialchars($erro)?></div><?php endif; ?>
-<?php if (!empty($_GET['msg']) && $_GET['msg']==='senha_alterada'): ?><div class="alert success">✅ Senha alterada com sucesso! Faça login.</div><?php endif; ?>
-<?php if (!empty($_GET['msg']) && $_GET['msg']==='reset_enviado'): ?><div class="alert success">📧 Verifique seu e-mail para redefinir a senha.</div><?php endif; ?>
+<?php if ($erro): ?><div class="alert"><?= icon('alert', 18) ?><span><?=htmlspecialchars($erro)?></span></div><?php endif; ?>
+<?php if (!empty($_GET['msg']) && $_GET['msg']==='senha_alterada'): ?><div class="alert success"><?= icon('check', 18) ?><span>Senha alterada com sucesso! Faça login.</span></div><?php endif; ?>
+<?php if (!empty($_GET['msg']) && $_GET['msg']==='reset_enviado'): ?><div class="alert success"><?= icon('mail', 18) ?><span>Verifique seu e-mail para redefinir a senha.</span></div><?php endif; ?>
 
 <div class="field">
 <label>E-mail</label>
@@ -82,7 +93,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:linear-gradient(135d
 <label>Senha</label>
 <input type="password" name="senha" required placeholder="••••••••">
 </div>
-<button class="btn" type="submit">🔓 Entrar</button>
+<button class="btn" type="submit"><span>Entrar</span><?= icon('arrow-right', 18) ?></button>
 
 <div class="links">
 <a href="esqueci_senha.php">Esqueci minha senha</a>
@@ -91,7 +102,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:linear-gradient(135d
 
 <div class="divider">
 Ainda não tem conta?<br>
-<a href="../signup.php" class="new-link">🚀 Criar conta grátis</a>
+<a href="../signup.php" class="new-link"><?= icon('rocket', 17) ?><span>Criar conta grátis</span></a>
 </div>
 </form>
 </body>

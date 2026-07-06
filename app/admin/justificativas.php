@@ -69,15 +69,15 @@ try {
 <?php if ($msg): ?><div class="alert alert-<?= $msg_tipo==='ok'?'ok':'erro' ?>"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
 
 <div class="alert alert-info" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <span>📋 Central de aprovações: <strong><?= $pend_total ?></strong> justificativa(s)/correção(ões) pendente(s).</span>
-    <a href="horas_extras.php" class="btn btn-secondary">⏰ Horas extras<?= $he_pend>0 ? " ($he_pend)" : '' ?> →</a>
+    <span style="display:flex;align-items:center;gap:8px"><?= icon('justificativas', 17) ?>Central de aprovações: <strong><?= $pend_total ?></strong> justificativa(s)/correção(ões) pendente(s).</span>
+    <a href="horas_extras.php" class="btn btn-secondary"><?= icon('extras', 16) ?>Horas extras<?= $he_pend>0 ? " ($he_pend)" : '' ?> →</a>
 </div>
 
 <div class="aprov-toolbar">
     <strong style="color:#64748b;font-size:.8rem">Categoria:</strong>
     <a href="?cat=todas&status=<?= $status ?>" class="btn <?= $cat==='todas'?'btn-primary':'btn-secondary' ?>">Todas</a>
-    <a href="?cat=justificativa&status=<?= $status ?>" class="btn <?= $cat==='justificativa'?'btn-primary':'btn-secondary' ?>">📝 Justificativas</a>
-    <a href="?cat=correcao&status=<?= $status ?>" class="btn <?= $cat==='correcao'?'btn-primary':'btn-secondary' ?>">🛠 Correções</a>
+    <a href="?cat=justificativa&status=<?= $status ?>" class="btn <?= $cat==='justificativa'?'btn-primary':'btn-secondary' ?>"><?= icon('justificativas', 15) ?>Justificativas</a>
+    <a href="?cat=correcao&status=<?= $status ?>" class="btn <?= $cat==='correcao'?'btn-primary':'btn-secondary' ?>"><?= icon('ajuste', 15) ?>Correções</a>
     <span class="sep"></span>
     <strong style="color:#64748b;font-size:.8rem">Status:</strong>
     <a href="?cat=<?= $cat ?>&status=pendente" class="btn <?= $status==='pendente'?'btn-primary':'btn-secondary' ?>">Pendentes</a>
@@ -95,7 +95,7 @@ try {
         <div class="jhead">
             <strong><?= htmlspecialchars($j['nome_completo']) ?></strong>
             <span class="who-meta"><?= htmlspecialchars($j['matricula']) ?> · enviado <?= date('d/m/Y H:i', strtotime($j['solicitado_em'])) ?></span>
-            <span class="jbadge cat-<?= $j['categoria'] ?>"><?= $is_corr ? '🛠 Correção' : '📝 Justificativa' ?></span>
+            <span class="jbadge cat-<?= $j['categoria'] ?>"><?= $is_corr ? 'Correção' : 'Justificativa' ?></span>
             <span class="jbadge st-<?= $j['status'] ?>"><?= $j['status'] ?></span>
         </div>
         <div class="jbody">
@@ -103,15 +103,15 @@ try {
             <p><span class="lbl"><?= $is_corr ? 'Batida a corrigir' : 'Tipo' ?>:</span> <?= htmlspecialchars($tipo_label) ?></p>
             <?php if ($is_corr): ?>
                 <div class="correcao-box">
-                    ⏱ Inserir batida de <strong><?= htmlspecialchars($tipo_label) ?></strong>
+                    Inserir batida de <strong><?= htmlspecialchars($tipo_label) ?></strong>
                     às <strong><?= $j['horario_correto'] ? substr($j['horario_correto'],0,5) : '--:--' ?></strong>
                     em <strong><?= date('d/m/Y', strtotime($j['data_ref'])) ?></strong>.
-                    <?php if ($j['batida_id']): ?><br><small>✅ Batida registrada (id <?= (int)$j['batida_id'] ?>).</small><?php endif; ?>
+                    <?php if ($j['batida_id']): ?><br><small>Batida registrada (id <?= (int)$j['batida_id'] ?>).</small><?php endif; ?>
                 </div>
             <?php endif; ?>
             <p><span class="lbl">Motivo:</span> <?= nl2br(htmlspecialchars($j['motivo'])) ?></p>
             <?php if (!empty($j['anexo_arquivo'])): ?>
-                <a class="anexo-link" href="anexo.php?id=<?= (int)$j['id'] ?>" target="_blank">📎 Ver comprovação<?= $j['anexo_nome_original'] ? ' · '.htmlspecialchars($j['anexo_nome_original']) : '' ?></a>
+                <a class="anexo-link" href="anexo.php?id=<?= (int)$j['id'] ?>" target="_blank"><?= icon('justificativas', 15) ?>Ver comprovação<?= $j['anexo_nome_original'] ? ' · '.htmlspecialchars($j['anexo_nome_original']) : '' ?></a>
             <?php endif; ?>
             <?php if ($j['status'] !== 'pendente'): ?>
                 <p style="margin-top:8px"><span class="lbl">Decisão:</span> <?= date('d/m/Y H:i', strtotime($j['decidido_em'])) ?>
@@ -123,8 +123,8 @@ try {
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= (int)$j['id'] ?>">
             <input type="text" name="motivo" placeholder="Observação da decisão (opcional)">
-            <button name="acao" value="aprovar" class="btn btn-success">✓ Aprovar<?= $is_corr ? ' e registrar batida' : '' ?></button>
-            <button name="acao" value="rejeitar" class="btn btn-danger">✗ Rejeitar</button>
+            <button name="acao" value="aprovar" class="btn btn-success"><?= icon('check', 16) ?>Aprovar<?= $is_corr ? ' e registrar batida' : '' ?></button>
+            <button name="acao" value="rejeitar" class="btn btn-danger"><?= icon('x', 16) ?>Rejeitar</button>
         </form>
         <?php endif; ?>
     </div>

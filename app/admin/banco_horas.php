@@ -156,7 +156,7 @@ $funcs = $stmt->fetchAll();
                         <div style="font-size:.72rem;color:#64748b" title="<?= htmlspecialchars($ab['motivo']) ?>">
                             <?= htmlspecialchars(jus_label_tipo($ab['tipo'])) ?>
                             <?php if (!empty($ab['anexo_arquivo'])): ?>
-                                · <a href="anexo.php?id=<?= (int)$ab['id'] ?>" target="_blank" style="color:#0284c7">📎 comprovação</a>
+                                · <a href="anexo.php?id=<?= (int)$ab['id'] ?>" target="_blank" style="color:#1d4ed8">comprovação</a>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
