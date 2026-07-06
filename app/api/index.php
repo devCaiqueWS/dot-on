@@ -191,6 +191,11 @@ try {
                            $lat, $lng, $precisao]);
             $batida_id = (int)$pdo->lastInsertId();
 
+            // Recalcula minutos trabalhados/intervalo da sessão a partir das
+            // batidas (mantém dot_sessoes coerente para espelho e banco de horas).
+            try { jus_recalcular_sessao($sessao_id); }
+            catch (Throwable $e) { error_log("recalc sessao fail: " . $e->getMessage()); }
+
             // Emite CRP automaticamente (com e-mail)
             $crp_result = null;
             try { $crp_result = crp_emitir($batida_id, true); }

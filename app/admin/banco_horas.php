@@ -26,7 +26,15 @@ if (!$f) { echo "<p>Funcionário não encontrado.</p></main></body></html>"; exi
 // ================================================================
 $jornada = jornada_listar($func); // [dia_semana 0..6 => linha]
 
-// Sessões do período, indexadas por data (Y-m-d)
+// Auto-recálculo: sessões podem ter minutos_trabalhados desatualizado (batidas
+// antigas que não recalcularam a sessão). Recalcula antes de apurar.
+$stmt = db()->prepare("SELECT id FROM dot_sessoes WHERE usuario_id=? AND data_ref BETWEEN ? AND ?");
+$stmt->execute([$func, $periodo_inicio, $periodo_fim]);
+foreach ($stmt->fetchAll() as $row) {
+    try { jus_recalcular_sessao((int)$row['id']); } catch (Throwable $e) {}
+}
+
+// Sessões do período (já recalculadas), indexadas por data (Y-m-d)
 $stmt = db()->prepare("SELECT s.data_ref, s.minutos_trabalhados, s.minutos_ociosos, s.minutos_extras, s.status
     FROM dot_sessoes s
     WHERE s.usuario_id=? AND s.data_ref BETWEEN ? AND ?");
@@ -67,8 +75,9 @@ while ($cur <= $lim) {
     $sess       = $sessoes[$data] ?? null;
     $trabalhado = $sess ? (int)$sess['minutos_trabalhados'] : 0;
 
-    // Dia em curso (hoje) ainda sem batida: não conta como falta.
-    if ($data === $hoje && !$sess) continue;
+    // Dia de hoje: só apura depois que a pessoa registrar a saída (sessão
+    // encerrada). Enquanto está em curso, não penaliza nem conta como falta.
+    if ($data === $hoje && (!$sess || ($sess['status'] ?? '') !== 'encerrada')) continue;
     // Folga não trabalhada: não polui o relatório.
     if ($carga === 0 && $trabalhado === 0) continue;
 
