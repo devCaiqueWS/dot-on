@@ -172,7 +172,8 @@ function crp_emitir(int $batida_id, bool $enviar_email = true): array {
             </p>
         </div>";
 
-        if (email_enviar($b['user_email'], $b['nome_completo'], "[DOT-ON] CRP NSR {$nsr_fmt} · {$tipo_txt} {$mom}", $corpo, '', (int)$b['empresa_id'])) {
+        $assunto = "Registro de Ponto {$tipo_txt} {$mom}";
+        if (email_enviar($b['user_email'], $b['nome_completo'], $assunto, $corpo, '', (int)$b['empresa_id'])) {
             db()->prepare("UPDATE dot_crp SET enviado_email=1, enviado_em=NOW() WHERE batida_id=?")
                 ->execute([$batida_id]);
             $result['email_enviado'] = true;
