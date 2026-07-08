@@ -192,13 +192,15 @@ function billing_assinar_empresa(int $empresaId, string $forma = 'UNDEFINED'): a
 
     $assinatura = billing_assinatura($empresaId);
 
-    // Já tem assinatura ativa? Não recria.
-    if ($assinatura && $assinatura['asaas_subscription_id'] && $assinatura['status'] === 'active') {
-        return $assinatura;
+    // Já existe assinatura no Asaas (ativa ou aguardando pagamento)? Não recria —
+    // só ressincroniza as cobranças e devolve. Evita subscription duplicada no retry.
+    if ($assinatura && $assinatura['asaas_subscription_id'] && $assinatura['status'] !== 'canceled') {
+        try { billing_sincronizar_pagamentos($empresaId, $assinatura['asaas_subscription_id']); } catch (Throwable $e) {}
+        return billing_assinatura($empresaId);
     }
 
-    // 1) Customer no Asaas (reaproveita se já existir)
-    $customerId = $assinatura['asaas_customer_id'] ?? ($emp['asaas_customer_id'] ?? null);
+    // 1) Customer no Asaas (reaproveita se já existir na assinatura local)
+    $customerId = $assinatura['asaas_customer_id'] ?? null;
     if (!$customerId) {
         $c = $cliente->criarCliente([
             'name'        => $emp['razao_social'] ?: $emp['nome_fantasia'],
@@ -238,9 +240,6 @@ function billing_assinar_empresa(int $empresaId, string $forma = 'UNDEFINED'): a
             forma_pagamento = VALUES(forma_pagamento),
             proximo_vencimento = VALUES(proximo_vencimento)")
         ->execute([$empresaId, $customerId, $subId, 'pending', $valor, $cfg['ciclo'] ?? 'MONTHLY', $forma, $vencimento]);
-
-    $pdo->prepare("UPDATE dot_empresas SET asaas_customer_id = ? WHERE id = ? AND (asaas_customer_id IS NULL OR asaas_customer_id = '')")
-        ->execute([$customerId, $empresaId]);
 
     // 4) Puxa a(s) cobrança(s) já geradas pela assinatura
     try { billing_sincronizar_pagamentos($empresaId, $subId, $customerId); } catch (Throwable $e) {}
