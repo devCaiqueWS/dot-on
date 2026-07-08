@@ -5,6 +5,20 @@
 
 require_once __DIR__ . '/db.php';
 
+/**
+ * Codifica um nome de exibição (From/To) conforme RFC 2047 quando há
+ * caracteres não-ASCII (acentos). Sem isso, os bytes UTF-8 chegam crus
+ * no cabeçalho e o cliente de e-mail os lê como Latin-1 → "IntegraÃ§Ã£o".
+ * Encoded-word NÃO pode ficar entre aspas; nomes ASCII vão entre aspas.
+ */
+function mime_display_name($nome) {
+    $nome = (string)$nome;
+    if (preg_match('/[^\x20-\x7E]/', $nome)) {
+        return '=?UTF-8?B?' . base64_encode($nome) . '?=';
+    }
+    return '"' . str_replace('"', '', $nome) . '"';
+}
+
 function smtp_config() {
     static $cfg = null;
     if ($cfg !== null) return $cfg;
@@ -83,8 +97,8 @@ function email_enviar_smtp($para_email, $para_nome, $assunto, $html, $texto = ''
 
     $boundary = 'BND' . md5(uniqid());
     $headers = [
-        "From: \"$from_name\" <$from_email>",
-        "To: \"$para_nome\" <$para_email>",
+        "From: " . mime_display_name($from_name) . " <$from_email>",
+        "To: " . mime_display_name($para_nome) . " <$para_email>",
         "Subject: =?UTF-8?B?" . base64_encode($assunto) . "?=",
         "MIME-Version: 1.0",
         "Content-Type: multipart/alternative; boundary=\"$boundary\"",
