@@ -22,6 +22,7 @@ $nav_itens = [
     ['espelho',        'espelho.php',       'espelho',        'Espelho de Ponto'],
     ['relatorios',     'relatorios.php',    'relatorios',     'Relatórios & AFD/AEJ'],
     ['config',         'config.php',        'config',         'Configurações'],
+    ['assinatura',     'assinatura.php',    'config',         'Assinatura'],
     ['downloads',      'downloads.php',     'downloads',      'Agente Windows'],
 ];
 
@@ -104,3 +105,24 @@ try {
 </script>
 <main class="content">
     <h1><?= htmlspecialchars($titulo ?? 'Painel') ?></h1>
+<?php
+// Aviso de assinatura (usa só dados já carregados de $empresa — sem query extra).
+if ($empresa && ($pagina ?? '') !== 'assinatura') {
+    $ass_status = $empresa['assinatura_status'] ?? 'trial';
+    $aviso = null;
+    if ($ass_status === 'overdue') {
+        $aviso = ['#fef2f2', '#991b1b', '#ef4444', '⚠️ Sua mensalidade está em atraso. Regularize para não perder o acesso.'];
+    } elseif ($ass_status === 'trial' && !empty($empresa['trial_expira'])) {
+        $d = ceil((strtotime($empresa['trial_expira']) - time()) / 86400);
+        if ($d <= 7) {
+            $txt = $d <= 0 ? 'Seu período de teste terminou.' : "Seu teste grátis termina em {$d} dia(s).";
+            $aviso = ['#fffbeb', '#92400e', '#f59e0b', "⏳ {$txt} Assine para continuar usando o DOT-ON."];
+        }
+    }
+    if ($aviso):
+?>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;background:<?= $aviso[0] ?>;color:<?= $aviso[1] ?>;border-left:4px solid <?= $aviso[2] ?>;padding:12px 16px;border-radius:8px;margin-bottom:18px;">
+        <span><?= $aviso[3] ?></span>
+        <a href="assinatura.php" class="btn btn-primary" style="white-space:nowrap;">Ver assinatura</a>
+    </div>
+<?php endif; } ?>
