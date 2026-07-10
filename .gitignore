@@ -27,3 +27,5 @@ desktop.ini
 
 # Observação: app/downloads/DOT-ON-Agent.exe É versionado de propósito
 # (binário distribuído aos funcionários).
+# Cache do checksum do agent (derivado do .exe, recriado em runtime no servidor):
+app/downloads/*.sha256.json

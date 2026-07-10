@@ -51,6 +51,39 @@ function fmt_minutos(int $min): string {
     return sprintf("%s%02d:%02d", $sinal, intdiv($min, 60), $min % 60);
 }
 
+/**
+ * SHA-256 do executável do agent, com cache por mtime para não re-hashear
+ * um binário de dezenas de MB a cada checagem de versão de cada cliente.
+ */
+function agent_exe_sha256(string $exe_path): ?string {
+    if (!is_file($exe_path)) return null;
+    $mtime = filemtime($exe_path);
+    $cache = $exe_path . '.sha256.json';
+    if (is_file($cache)) {
+        $c = json_decode((string)file_get_contents($cache), true);
+        if (is_array($c) && (int)($c['mtime'] ?? 0) === (int)$mtime && !empty($c['sha256'])) {
+            return (string)$c['sha256'];
+        }
+    }
+    $h = hash_file('sha256', $exe_path);
+    if ($h) @file_put_contents($cache, json_encode(['mtime' => $mtime, 'sha256' => $h]));
+    return $h ?: null;
+}
+
+/**
+ * Manifesto de versão do agent (fonte da verdade: downloads/agent-version.json).
+ * Retorna sempre um array com defaults seguros mesmo se o arquivo não existir.
+ */
+function agent_manifest(): array {
+    $file = __DIR__ . '/../downloads/agent-version.json';
+    $mf = is_file($file) ? (json_decode((string)file_get_contents($file), true) ?: []) : [];
+    return [
+        'versao'      => (string)($mf['versao'] ?? '1.0.0'),
+        'obrigatoria' => (bool)($mf['obrigatoria'] ?? false),
+        'notas'       => (string)($mf['notas'] ?? ''),
+    ];
+}
+
 function get_config(int $empresa_id, string $chave, $default = null) {
     static $cache = [];
     if (!isset($cache[$empresa_id])) {
