@@ -42,9 +42,38 @@ $empresas = $pdo->query("SELECT id, slug, nome_fantasia, razao_social, plano, at
     FROM dot_empresas ORDER BY id DESC")->fetchAll();
 
 $base_url = (($_SERVER['HTTPS']??'')==='on'?'https':'http') . '://' . $_SERVER['HTTP_HOST'] . '/app';
+
+// Versão publicada do agent (auto-update)
+require_once __DIR__ . '/../includes/helpers.php';
+$agent_mf = agent_manifest();
+$agent_exe = __DIR__ . '/../downloads/DOT-ON-Agent.exe';
+$agent_exe_ok = is_file($agent_exe);
+$agent_exe_data = $agent_exe_ok ? date('d/m/Y H:i', filemtime($agent_exe)) : '—';
+$agent_exe_mb = $agent_exe_ok ? number_format(filesize($agent_exe)/1048576, 1, ',', '.') : '0';
 ?>
 
 <h1>📦 Instaladores Personalizados</h1>
+
+<div class="panel">
+    <h2 style="margin-top:0;">🔄 Versão do agent (auto-update)</h2>
+    <p style="color:#cbd5e1; line-height:1.7;">
+        Os agents já instalados checam esta versão no início e se atualizam sozinhos quando há uma mais nova.
+    </p>
+    <table style="max-width:640px;">
+        <tr><td style="color:#94a3b8;">Versão publicada</td>
+            <td><code style="background:#0f172a;padding:3px 8px;border-radius:4px;"><?= htmlspecialchars($agent_mf['versao']) ?></code>
+                <?php if ($agent_mf['obrigatoria']): ?><span style="color:#f59e0b;margin-left:8px;">⚠ obrigatória</span><?php endif; ?></td></tr>
+        <tr><td style="color:#94a3b8;">Executável</td>
+            <td><?= $agent_exe_ok ? "✓ $agent_exe_mb MB · atualizado em $agent_exe_data" : '<span style="color:#ef4444;">✗ ausente</span>' ?></td></tr>
+        <tr><td style="color:#94a3b8;">Notas</td><td style="color:#cbd5e1;"><?= htmlspecialchars($agent_mf['notas']) ?></td></tr>
+    </table>
+    <p style="color:#64748b; font-size:13px; margin-top:14px; line-height:1.7;">
+        <strong>Para publicar uma nova versão:</strong> (1) incremente <code>AGENT_VERSION</code> em <code>agent.py</code> e gere o novo <code>.exe</code>;
+        (2) envie-o para <code>app/downloads/DOT-ON-Agent.exe</code>;
+        (3) atualize a versão em <code>app/downloads/agent-version.json</code> para o mesmo número.
+        O checksum é calculado automaticamente pelo servidor.
+    </p>
+</div>
 
 <?php if ($msg): ?><div class="alert <?= $msg_tipo ?>"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
 

@@ -45,6 +45,7 @@ try {
 <meta charset="UTF-8">
 <title>DOT-ON · <?= htmlspecialchars($titulo ?? 'Painel') ?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232563eb'/><text x='50' y='73' font-size='60' font-family='Segoe UI,Arial,sans-serif' font-weight='700' fill='white' text-anchor='middle'>D</text></svg>">
 <script>(function(){try{if(localStorage.getItem('dot-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <link rel="stylesheet" href="../assets/css/style.css">
 </head>

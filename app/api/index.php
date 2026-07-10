@@ -417,6 +417,37 @@ try {
             ]);
             break;
 
+        // ---------- AUTO-UPDATE DO AGENT DESKTOP ----------
+        // Público (sem token): o agent checa a versão logo no boot, antes mesmo de
+        // depender de uma sessão válida. Só expõe versão + URL pública do executável.
+        case 'GET agent/versao':
+            $exe = __DIR__ . '/../downloads/DOT-ON-Agent.exe';
+            if (!is_file($exe)) json_response(['ok'=>false,'erro'=>'Executável indisponível'], 503);
+            $mf = agent_manifest();
+            $scheme = ((($_SERVER['HTTPS'] ?? '') === 'on') || (($_SERVER['SERVER_PORT'] ?? '') == 443)) ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'dot-on.com.br';
+            json_response([
+                'ok'          => true,
+                'versao'      => $mf['versao'],
+                'obrigatoria' => $mf['obrigatoria'],
+                'notas'       => $mf['notas'],
+                'url'         => "$scheme://$host/app/api/agent/download",
+                'tamanho'     => filesize($exe),
+                'sha256'      => agent_exe_sha256($exe),
+            ]);
+            break;
+
+        case 'GET agent/download':
+            $exe = __DIR__ . '/../downloads/DOT-ON-Agent.exe';
+            if (!is_file($exe)) json_response(['ok'=>false,'erro'=>'Executável indisponível'], 503);
+            while (ob_get_level() > 0) { ob_end_clean(); }
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="DOT-ON-Agent.exe"');
+            header('Content-Length: ' . filesize($exe));
+            header('X-Content-Type-Options: nosniff');
+            readfile($exe);
+            exit;
+
         case 'GET ping':
         case 'GET ':
             json_response(['ok'=>true,'app'=>'dot-on','version'=>'1.0','server_time'=>date('c')]);
