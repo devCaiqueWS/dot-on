@@ -35,7 +35,7 @@ const JUS_MIMES_OK = [
 const JUS_MAX_BYTES = 8 * 1024 * 1024; // 8 MB por comprovante
 
 /** Categorias e tipos válidos */
-const JUS_TIPOS_JUSTIFICATIVA = ['atraso','falta','saida_antecipada','medico','atestado','abono','outro'];
+const JUS_TIPOS_JUSTIFICATIVA = ['atraso','falta','saida_antecipada','medico','atestado','abono','feriado','outro'];
 const JUS_TIPOS_BATIDA        = ['entrada','saida_intervalo','retorno_intervalo','saida'];
 
 /**
@@ -390,7 +390,8 @@ function jus_recalcular_sessao(int $sessao_id): void {
 function jus_label_tipo(string $tipo): string {
     return [
         'atraso'=>'Atraso', 'falta'=>'Falta', 'saida_antecipada'=>'Saída antecipada',
-        'medico'=>'Consulta médica', 'atestado'=>'Atestado', 'abono'=>'Abono', 'outro'=>'Outro',
+        'medico'=>'Consulta médica', 'atestado'=>'Atestado', 'abono'=>'Abono',
+        'feriado'=>'Feriado', 'outro'=>'Outro',
         'esquecimento'=>'Esquecimento de bater ponto',
         'entrada'=>'Entrada', 'saida_intervalo'=>'Saída p/ intervalo',
         'retorno_intervalo'=>'Retorno do intervalo', 'saida'=>'Saída',

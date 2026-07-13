@@ -348,6 +348,7 @@ $saldo_m = abs($saldo_min) % 60;
 <option value="medico">Consulta médica</option>
 <option value="atestado">Atestado médico</option>
 <option value="abono">Abono</option>
+<option value="feriado">Feriado</option>
 <option value="outro">Outro</option>
 </select>
 </div>

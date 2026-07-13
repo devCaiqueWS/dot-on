@@ -85,7 +85,12 @@ while ($cur <= $lim) {
 
     if (!$sess && $carga > 0) {
         // Falta: abonada (justificativa aprovada) não gera débito.
-        $situacao = $abono ? 'Falta abonada' : 'Falta';
+        // Feriado é um abono especial: o dia é neutro e aparece como "Feriado".
+        if ($abono) {
+            $situacao = ($abono['tipo'] === 'feriado') ? 'Feriado' : 'Falta abonada';
+        } else {
+            $situacao = 'Falta';
+        }
     } elseif ($carga === 0 && $trabalhado) {
         $situacao = 'Folga trab.';
     } else {
@@ -144,7 +149,7 @@ $funcs = $stmt->fetchAll();
         <thead><tr><th>Data</th><th>Carga</th><th>Trab.</th><th>Situação</th><th>Ocioso</th><th>Extra</th><th>Saldo dia</th><th>Acumulado</th></tr></thead>
         <tbody>
         <?php foreach ($dias as $d): $cor = $d['saldo']>=0?'#16a34a':'#dc2626';
-            $badge = ['Falta'=>'#dc2626','Falta abonada'=>'#16a34a','Folga trab.'=>'#0284c7','Normal'=>'#64748b'][$d['situacao']] ?? '#64748b';
+            $badge = ['Falta'=>'#dc2626','Falta abonada'=>'#16a34a','Feriado'=>'#0d9488','Folga trab.'=>'#0284c7','Normal'=>'#64748b'][$d['situacao']] ?? '#64748b';
             $ab = $d['abono'] ?? null; ?>
             <tr>
                 <td><?= date('d/m/Y D', strtotime($d['data_ref'])) ?></td>
