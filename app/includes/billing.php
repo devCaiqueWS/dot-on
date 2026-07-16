@@ -194,6 +194,16 @@ function billing_assinar_empresa(int $empresaId, string $forma = 'UNDEFINED'): a
     $emp = $emp->fetch();
     if (!$emp) throw new AsaasException('Empresa não encontrada.', 0);
 
+    // Prechecks: o Asaas exige CNPJ válido e e-mail. Falha aqui com mensagem
+    // clara em vez de deixar o erro técnico do gateway vazar para o gestor.
+    $cnpjLimpo = preg_replace('/\D/', '', (string)($emp['cnpj'] ?? ''));
+    if (strlen($cnpjLimpo) !== 14) {
+        throw new AsaasException('O CNPJ da empresa está incompleto/ inválido. Corrija no cadastro da empresa antes de assinar.', 0);
+    }
+    if (empty($emp['email_contato']) || !filter_var($emp['email_contato'], FILTER_VALIDATE_EMAIL)) {
+        throw new AsaasException('Cadastre um e-mail de contato válido da empresa antes de assinar.', 0);
+    }
+
     $assinatura = billing_assinatura($empresaId);
 
     // Já existe assinatura no Asaas (ativa ou aguardando pagamento)? Não recria —

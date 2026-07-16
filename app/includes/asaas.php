@@ -53,6 +53,15 @@ class AsaasClient {
         return $this->request('GET', "/customers/{$customerId}");
     }
 
+    /**
+     * Valida a credencial sem criar nada (GET leve). Lança AsaasException se a
+     * chave for inválida/ambiente errado; retorna true se responder 2xx.
+     */
+    public function validarCredencial(): bool {
+        $this->request('GET', '/customers?limit=1');
+        return true;
+    }
+
     // -------- Assinaturas (subscriptions) --------
 
     /**

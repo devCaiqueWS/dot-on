@@ -17,6 +17,13 @@ require_once __DIR__ . '/../includes/billing.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Log de depuração do webhook (app/logs é protegido por .htaccess). Ajuda a ver
+// exatamente o que o Asaas envia durante os testes. Nunca loga o token.
+function wh_log(string $msg): void {
+    $arq = __DIR__ . '/../logs/asaas_webhook.log';
+    @file_put_contents($arq, '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n", FILE_APPEND);
+}
+
 // Só aceita POST
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     http_response_code(405);
@@ -33,6 +40,7 @@ if ($tokenEsperado !== '') {
     if (!hash_equals($tokenEsperado, (string)$tokenRecebido)) {
         http_response_code(401);
         echo json_encode(['ok' => false, 'erro' => 'Token inválido']);
+        wh_log('401 token inválido (header ' . ($tokenRecebido === '' ? 'ausente' : 'diferente do salvo') . ')');
         error_log('DOT-ON asaas_webhook: token inválido');
         exit;
     }
@@ -44,6 +52,7 @@ $evt = json_decode($raw, true);
 if (!$evt || empty($evt['event'])) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'erro' => 'Payload inválido']);
+    wh_log('400 payload inválido: ' . substr((string)$raw, 0, 300));
     exit;
 }
 
@@ -100,7 +109,9 @@ try {
         }
 
         auditar(null, 'asaas_webhook', 'faturamento', $empresaId, ['evento' => $evento, 'payment' => $paymentId, 'status' => $pagamento['status'] ?? null]);
+        wh_log("OK evento=$evento payment=$paymentId empresa=$empresaId status=" . ($pagamento['status'] ?? '-'));
     } else {
+        wh_log("IGNORADO empresa não identificada: evento=$evento payment=$paymentId ref=" . ($pagamento['externalReference'] ?? '-') . " customer=" . ($pagamento['customer'] ?? '-'));
         error_log("DOT-ON asaas_webhook: empresa não identificada (evento $evento, payment $paymentId)");
     }
 
@@ -108,6 +119,7 @@ try {
     echo json_encode(['ok' => true, 'evento' => $evento]);
 
 } catch (Throwable $e) {
+    wh_log('ERRO ' . $e->getMessage());
     error_log('DOT-ON asaas_webhook erro: ' . $e->getMessage());
     // 200 mesmo em erro lógico evita retries infinitos; o log guarda o problema.
     http_response_code(200);

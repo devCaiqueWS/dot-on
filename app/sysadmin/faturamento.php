@@ -55,11 +55,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$cli) { $msg = 'Configure a chave da API antes de testar.'; $msg_tipo = 'error'; }
         else {
             try {
-                // Endpoint leve só para validar a credencial
-                $cli->criarCliente(['name' => 'DOT-ON Teste Conexão', 'cpfCnpj' => '19540550000121']);
-                $msg = '✓ Conexão com o Asaas OK — credencial válida.'; $msg_tipo = 'success';
+                // GET leve — valida a credencial SEM criar nenhum dado no Asaas.
+                $cli->validarCredencial();
+                $amb = (billing_config()['ambiente'] ?? 'sandbox') === 'production' ? 'Produção' : 'Sandbox';
+                $msg = "✓ Conexão com o Asaas OK ({$amb}) — credencial válida."; $msg_tipo = 'success';
             } catch (AsaasException $e) {
-                $msg = '✗ Falha: ' . $e->getMessage(); $msg_tipo = 'error';
+                $msg = '✗ Falha: ' . $e->getMessage() . ' (confira a chave e se o ambiente bate com ela).';
+                $msg_tipo = 'error';
             }
         }
     }
