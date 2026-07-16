@@ -12,6 +12,10 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/asaas.php';
 
+// Dias de carência após o vencimento antes de bloquear o acesso ao painel.
+// Durante a carência os admins são avisados; passando disso, o painel bloqueia.
+if (!defined('BILLING_CARENCIA_DIAS')) define('BILLING_CARENCIA_DIAS', 10);
+
 /* ============================================================
  * Schema (migração preguiçosa e idempotente)
  * ============================================================ */
@@ -326,10 +330,10 @@ function billing_acesso_liberado(array $empresa): bool {
     if ($status === 'canceled') return false;
 
     if ($status === 'overdue') {
-        // carência de 5 dias após vencer antes de bloquear
+        // Carência após o vencimento antes de bloquear (BILLING_CARENCIA_DIAS).
         $a = billing_assinatura((int)$empresa['id']);
         if ($a && $a['proximo_vencimento']) {
-            return strtotime($a['proximo_vencimento']) > strtotime('-5 days');
+            return strtotime($a['proximo_vencimento']) > strtotime('-' . BILLING_CARENCIA_DIAS . ' days');
         }
         return false;
     }
@@ -339,4 +343,63 @@ function billing_acesso_liberado(array $empresa): bool {
         return strtotime($empresa['trial_expira']) >= strtotime('today');
     }
     return true; // sem data de trial definida → não bloqueia
+}
+
+/**
+ * Dias restantes de carência antes do bloqueio (só faz sentido em 'overdue').
+ * Retorna null se não está em atraso; 0 quando a carência já estourou.
+ */
+function billing_dias_ate_bloqueio(array $empresa): ?int {
+    if (($empresa['assinatura_status'] ?? '') !== 'overdue') return null;
+    $a = billing_assinatura((int)$empresa['id']);
+    if (!$a || empty($a['proximo_vencimento'])) return 0;
+    $limite = strtotime($a['proximo_vencimento']) + BILLING_CARENCIA_DIAS * 86400;
+    return max(0, (int)ceil(($limite - time()) / 86400));
+}
+
+/* ============================================================
+ * Reconciliação (rede de segurança para webhooks perdidos)
+ * ============================================================ */
+
+/**
+ * Reavalia o status da empresa a partir das cobranças locais (dot_pagamentos),
+ * sem chamar o Asaas. Usada após um sync para corrigir status defasado.
+ */
+function billing_reavaliar_status(int $empresaId): void {
+    $st = db()->prepare("SELECT status FROM dot_pagamentos WHERE empresa_id=? ORDER BY vencimento DESC, id DESC LIMIT 1");
+    $st->execute([$empresaId]);
+    $status = $st->fetchColumn();
+    if ($status === false) return;
+    if (in_array($status, ['CONFIRMED','RECEIVED','RECEIVED_IN_CASH'], true)) {
+        billing_set_status_empresa($empresaId, 'active');
+    } elseif ($status === 'OVERDUE') {
+        billing_set_status_empresa($empresaId, 'overdue');
+    }
+}
+
+/**
+ * Ressincroniza as cobranças de todas as assinaturas ativas com o Asaas e
+ * reavalia o status. Idempotente — pensada para rodar em cron diário.
+ * @return array resumo {ok, processadas, erros}
+ */
+function billing_reconciliar(): array {
+    billing_ensure_schema();
+    $cli = AsaasClient::fromConfig();
+    if (!$cli) return ['ok' => false, 'erro' => 'gateway não configurado'];
+
+    $rows = db()->query("SELECT empresa_id, asaas_subscription_id FROM dot_assinaturas
+        WHERE asaas_subscription_id IS NOT NULL AND status <> 'canceled'")->fetchAll();
+
+    $ok = 0; $erros = 0;
+    foreach ($rows as $r) {
+        try {
+            billing_sincronizar_pagamentos((int)$r['empresa_id'], $r['asaas_subscription_id']);
+            billing_reavaliar_status((int)$r['empresa_id']);
+            $ok++;
+        } catch (Throwable $e) {
+            $erros++;
+            error_log('DOT-ON billing_reconciliar empresa ' . $r['empresa_id'] . ': ' . $e->getMessage());
+        }
+    }
+    return ['ok' => true, 'processadas' => $ok, 'erros' => $erros];
 }
