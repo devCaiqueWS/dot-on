@@ -207,7 +207,7 @@ function bh_parse_hhmm(string $txt): int {
 </form>
 
 <?php if ($aviso_salvo): ?>
-    <div class="panel" style="border-left:4px solid #16a34a;background:#f0fdf4">
+    <div class="panel" style="border-left:4px solid #16a34a;background:#f0fdf4;color:#166534">
         ✔ Âncora do banco de horas atualizada.
     </div>
 <?php endif; ?>
@@ -215,7 +215,7 @@ function bh_parse_hhmm(string $txt): int {
 <?php if (in_array($user['perfil'], ['admin','rh','gestor'])): ?>
 <div class="panel">
     <h2>Âncora do banco de horas · <?= htmlspecialchars($f['nome_completo']) ?></h2>
-    <p style="color:#64748b;font-size:.85rem;margin:.25rem 0 .75rem">
+    <p style="color:var(--muted);font-size:.85rem;margin:.25rem 0 .75rem">
         A apuração não conta nenhum dia anterior a esta data — é o que evita
         débito falso do período em que a pessoa ainda não registrava ponto.
         Em branco, o sistema usa a <strong>primeira batida</strong> como início.
@@ -230,7 +230,7 @@ function bh_parse_hhmm(string $txt): int {
         </label>
         <button class="btn btn-primary">Salvar âncora</button>
     </form>
-    <p style="color:#94a3b8;font-size:.78rem;margin-top:.5rem">
+    <p style="color:var(--muted);font-size:.78rem;margin-top:.5rem">
         Apurando a partir de <strong><?= htmlspecialchars($inicio_efetivo) ?></strong>
         (âncora: <?= $data_inicio_banco ? htmlspecialchars($data_inicio_banco) : '—' ?>, <?= htmlspecialchars($data_inicio_fonte) ?>).
     </p>
@@ -262,7 +262,7 @@ function bh_parse_hhmm(string $txt): int {
                 <td>
                     <span style="color:<?= $badge ?>;font-weight:600"><?= $d['situacao'] ?></span>
                     <?php if ($ab): ?>
-                        <div style="font-size:.72rem;color:#64748b" title="<?= htmlspecialchars($ab['motivo']) ?>">
+                        <div style="font-size:.72rem;color:var(--muted)" title="<?= htmlspecialchars($ab['motivo']) ?>">
                             <?= htmlspecialchars(jus_label_tipo($ab['tipo'])) ?>
                             <?php if (!empty($ab['anexo_arquivo'])): ?>
                                 · <a href="anexo.php?id=<?= (int)$ab['id'] ?>" target="_blank" style="color:#1d4ed8">comprovação</a>
