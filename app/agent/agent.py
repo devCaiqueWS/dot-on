@@ -574,7 +574,13 @@ class MainWindow(QMainWindow):
         self.config_srv = api.config()
         self.estado = 'fora'   # fora | trabalhando | intervalo | bloqueado
         self.ocioso_desde = None
-        self.minutos_trab_hoje = 0
+        # Tempo trabalhado ancorado nas batidas do servidor (NAO no tempo de app aberto):
+        #  - _trab_base_seg: segundos ja fechados (segmentos entrada->saida/intervalo)
+        #  - _trab_seg_inicio: inicio do segmento de trabalho em aberto (ultima entrada/retorno)
+        # O total ao vivo = _trab_base_seg + (agora - _trab_seg_inicio) enquanto trabalhando.
+        # Assim, fechar e reabrir o agente reconstroi o tempo certo a partir da 1a batida.
+        self._trab_base_seg = 0.0
+        self._trab_seg_inicio = None
         self.minutos_intervalo_prev = 0     # intervalos ja concluidos (min)
         self.intervalo_inicio = None        # inicio do intervalo em andamento
         self.minutos_extra_solicitados = 0
@@ -734,26 +740,49 @@ class MainWindow(QMainWindow):
     def _restaurar_sessao(self):
         s = self.api.sessao_atual()
         if s.get('ok') and s.get('sessao'):
-            sessao = s['sessao']
-            self.minutos_trab_hoje = int(sessao.get('minutos_trabalhados') or 0)
-            self.minutos_intervalo_prev = int(sessao.get('minutos_intervalo') or 0)
-            batidas = s.get('batidas', [])
-            if batidas:
-                ultimo = batidas[-1]
-                tipo = ultimo['tipo']
-                if tipo in ('entrada', 'retorno_intervalo'):
-                    self.estado = 'trabalhando'
-                elif tipo == 'saida_intervalo':
-                    self.estado = 'intervalo'
-                    # marca o inicio do intervalo em andamento para a contagem regressiva
-                    try:
-                        self.intervalo_inicio = datetime.strptime(ultimo['momento'], '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        self.intervalo_inicio = datetime.now()
-                elif tipo == 'saida':
-                    self.estado = 'fora'
-                log(f"Sessao restaurada: estado={self.estado}, batidas={len(batidas)}")
+            self._aplicar_batidas(s.get('batidas') or [])
+            log(f"Sessao restaurada: estado={self.estado}, "
+                f"trab={int(self._segundos_trabalhados())//60}min, intervalo={self.minutos_intervalo_prev}min")
         self._atualizar_botoes()
+
+    def _aplicar_batidas(self, batidas):
+        """Reconstroi o tempo trabalhado a partir das batidas do servidor.
+
+        Percorre as batidas pareando entrada->saida/intervalo (mesma logica do
+        servidor) para somar os segmentos ja fechados e, principalmente, ancorar
+        o segmento AINDA EM ABERTO na 1a batida real — nao no momento em que o
+        app foi aberto. Assim, fechar e reabrir o agente nao perde tempo."""
+        trab_seg = 0.0
+        int_seg = 0.0
+        ts_in = None       # entrada de trabalho em aberto
+        ts_int_in = None   # intervalo em aberto
+        for b in batidas:
+            try:
+                ts = datetime.strptime(b['momento'], '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                continue
+            tipo = b.get('tipo')
+            if tipo == 'entrada':
+                ts_in = ts
+            elif tipo == 'saida_intervalo':
+                if ts_in: trab_seg += (ts - ts_in).total_seconds(); ts_in = None
+                ts_int_in = ts
+            elif tipo == 'retorno_intervalo':
+                if ts_int_in: int_seg += (ts - ts_int_in).total_seconds(); ts_int_in = None
+                ts_in = ts
+            elif tipo == 'saida':
+                if ts_in: trab_seg += (ts - ts_in).total_seconds(); ts_in = None
+        self._trab_base_seg = trab_seg
+        self._trab_seg_inicio = ts_in              # None se nao esta trabalhando
+        self.minutos_intervalo_prev = int(round(int_seg / 60))
+        self.intervalo_inicio = ts_int_in          # None se nao esta em intervalo
+        # Estado derivado do que ficou em aberto na ultima batida.
+        if ts_int_in is not None:
+            self.estado = 'intervalo'
+        elif ts_in is not None:
+            self.estado = 'trabalhando'
+        else:
+            self.estado = 'fora'
 
     def _safe(self, fn):
         """Envolve um slot de timer para que uma excecao nao derrube o processo."""
@@ -794,16 +823,26 @@ class MainWindow(QMainWindow):
         agora = datetime.now()
         if tipo == 'entrada':
             self.estado = 'trabalhando'
+            self._trab_seg_inicio = agora
         elif tipo == 'saida':
+            # Fecha o segmento de trabalho em aberto no total acumulado.
+            if self._trab_seg_inicio:
+                self._trab_base_seg += (agora - self._trab_seg_inicio).total_seconds()
+                self._trab_seg_inicio = None
             # Se a saida veio do fim de expediente, mantem o estado "bloqueado"
             # (EXPEDIENTE ENCERRADO); caso contrario e uma saida normal.
             self.estado = 'bloqueado' if self._encerrando else 'fora'
             self._encerrando = False
         elif tipo == 'saida_intervalo':
             self.estado = 'intervalo'
+            # Fecha o segmento de trabalho e abre a contagem do intervalo.
+            if self._trab_seg_inicio:
+                self._trab_base_seg += (agora - self._trab_seg_inicio).total_seconds()
+                self._trab_seg_inicio = None
             self.intervalo_inicio = agora
         elif tipo == 'retorno_intervalo':
             self.estado = 'trabalhando'
+            self._trab_seg_inicio = agora
             if self.intervalo_inicio:
                 usados = (agora - self.intervalo_inicio).total_seconds() / 60
                 self.minutos_intervalo_prev += int(round(usados))
@@ -920,7 +959,11 @@ class MainWindow(QMainWindow):
             return 480
 
     def _segundos_trabalhados(self):
-        base = getattr(self, 'minutos_trab_hoje_seg', self.minutos_trab_hoje * 60)
+        """Segundos trabalhados hoje = segmentos fechados + segmento em aberto ao vivo.
+        Ancorado nas batidas, entao independe de o app ter sido fechado/reaberto."""
+        base = self._trab_base_seg
+        if self.estado == 'trabalhando' and self._trab_seg_inicio:
+            base += (datetime.now() - self._trab_seg_inicio).total_seconds()
         return base
 
     # ---------------- LOOP DE VERIFICACAO ----------------
@@ -998,8 +1041,7 @@ class MainWindow(QMainWindow):
     # ---------------- TICK (1s) ----------------
     def _tick_cronometro(self):
         if self.estado == 'trabalhando':
-            self.minutos_trab_hoje_seg = getattr(self, 'minutos_trab_hoje_seg', self.minutos_trab_hoje * 60) + 1
-            seg = self.minutos_trab_hoje_seg
+            seg = int(self._segundos_trabalhados())
             self.lbl_cron.setText(f"{seg//3600:02d}:{(seg%3600)//60:02d}:{seg%60:02d}")
 
         self._atualizar_progresso()
