@@ -3,7 +3,6 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/tenant.php';
 require_once __DIR__ . '/../includes/icons.php';
-require_once __DIR__ . '/../includes/billing.php';
 $user = requer_login();
 $empresa = tenant_empresa();
 $pagina = $pagina ?? 'dashboard';
@@ -23,7 +22,6 @@ $nav_itens = [
     ['espelho',        'espelho.php',       'espelho',        'Espelho de Ponto'],
     ['relatorios',     'relatorios.php',    'relatorios',     'Relatórios & AFD/AEJ'],
     ['config',         'config.php',        'config',         'Configurações'],
-    ['assinatura',     'assinatura.php',    'config',         'Assinatura'],
     ['downloads',      'downloads.php',     'downloads',      'Agente Windows'],
 ];
 
@@ -107,60 +105,3 @@ try {
 </script>
 <main class="content">
     <h1><?= htmlspecialchars($titulo ?? 'Painel') ?></h1>
-<?php
-// ---------------------------------------------------------------------------
-// GATING DE FATURAMENTO
-// Bloqueio RÍGIDO do painel quando a mensalidade estoura a carência (10 dias
-// após o vencimento). A página de assinatura fica sempre acessível para o
-// admin/rh conseguir pagar e reativar. O ponto do funcionário (portal /me e a
-// API de batidas) NÃO é bloqueado — registro de ponto é obrigação legal.
-// Antes do bloqueio, os admins são avisados com contagem regressiva.
-// ---------------------------------------------------------------------------
-$pg = $pagina ?? '';
-if ($empresa && $pg !== 'assinatura' && !billing_acesso_liberado($empresa)) {
-    $pode_pagar = in_array($user['perfil'] ?? '', ['admin','rh'], true);
-?>
-    <div class="panel" style="max-width:680px;border-left:4px solid #ef4444;background:#fef2f2;color:#7f1d1d;">
-        <h2 style="color:#b91c1c;margin-top:0;">🔒 Acesso suspenso — mensalidade em atraso</h2>
-        <p style="line-height:1.7;">
-            O período de carência da sua assinatura terminou e o acesso ao painel foi
-            temporariamente suspenso. Assim que o pagamento for confirmado, tudo volta
-            ao normal automaticamente. Seus dados e as batidas dos funcionários continuam
-            registrados normalmente.
-        </p>
-        <?php if ($pode_pagar): ?>
-            <a href="assinatura.php" class="btn btn-primary" style="margin-top:8px;">Regularizar assinatura</a>
-        <?php else: ?>
-            <p style="margin-top:8px;font-weight:600;">Peça ao administrador da conta para regularizar a assinatura.</p>
-        <?php endif; ?>
-    </div>
-    </main></body></html>
-<?php
-    exit; // não renderiza o conteúdo da página bloqueada
-}
-
-// Aviso de assinatura (usa só dados já carregados de $empresa — sem query extra).
-if ($empresa && $pg !== 'assinatura') {
-    $ass_status = $empresa['assinatura_status'] ?? 'trial';
-    $aviso = null;
-    if ($ass_status === 'overdue') {
-        // Ainda dentro da carência: avisa com quantos dias faltam para o bloqueio.
-        $faltam = billing_dias_ate_bloqueio($empresa);
-        $quando = ($faltam !== null && $faltam > 0)
-            ? "Regularize em até {$faltam} dia(s) para não perder o acesso."
-            : 'Regularize para não perder o acesso.';
-        $aviso = ['#fef2f2', '#991b1b', '#ef4444', "⚠️ Sua mensalidade está em atraso. {$quando}"];
-    } elseif ($ass_status === 'trial' && !empty($empresa['trial_expira'])) {
-        $d = ceil((strtotime($empresa['trial_expira']) - time()) / 86400);
-        if ($d <= 7) {
-            $txt = $d <= 0 ? 'Seu período de teste terminou.' : "Seu teste grátis termina em {$d} dia(s).";
-            $aviso = ['#fffbeb', '#92400e', '#f59e0b', "⏳ {$txt} Assine para continuar usando o DOT-ON."];
-        }
-    }
-    if ($aviso):
-?>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;background:<?= $aviso[0] ?>;color:<?= $aviso[1] ?>;border-left:4px solid <?= $aviso[2] ?>;padding:12px 16px;border-radius:8px;margin-bottom:18px;">
-        <span><?= $aviso[3] ?></span>
-        <a href="assinatura.php" class="btn btn-primary" style="white-space:nowrap;">Ver assinatura</a>
-    </div>
-<?php endif; } ?>
