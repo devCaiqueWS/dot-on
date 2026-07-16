@@ -37,6 +37,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = 'Novo token de webhook gerado. Copie-o para o painel do Asaas.'; $msg_tipo = 'success';
     }
 
+    if ($acao === 'salvar_token') {
+        // Permite colar um token definido no Asaas (ex.: gerado lá) para que os
+        // dois lados batam. billing_salvar_config só toca no campo informado.
+        $t = trim($_POST['webhook_token'] ?? '');
+        if ($t === '') {
+            $msg = 'Cole o token antes de salvar.'; $msg_tipo = 'error';
+        } else {
+            billing_salvar_config(['webhook_token' => $t]);
+            sysadmin_log('billing_webhook_token', null, []);
+            $msg = 'Token do webhook salvo. Confirme que é idêntico ao do Asaas.'; $msg_tipo = 'success';
+        }
+    }
+
     if ($acao === 'testar') {
         $cli = AsaasClient::fromConfig();
         if (!$cli) { $msg = 'Configure a chave da API antes de testar.'; $msg_tipo = 'error'; }
@@ -160,13 +173,26 @@ $webhook_url = rtrim((require __DIR__ . '/../config/app.php')['base_url'], '/') 
                 <?php if (!empty($cfg['webhook_token'])): ?>
                     <code><?= htmlspecialchars($cfg['webhook_token']) ?></code>
                 <?php else: ?>
-                    <span class="muted">não gerado</span>
+                    <span class="muted">não definido</span>
                 <?php endif; ?>
                 <form method="post" style="display:inline-block;margin-left:10px;">
                     <?= csrf_field() ?>
                     <input type="hidden" name="acao" value="gerar_token">
                     <button class="btn btn-sm btn-outline" type="submit">🔁 Gerar novo token</button>
                 </form>
+                <div style="margin-top:10px;">
+                    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="acao" value="salvar_token">
+                        <input type="text" name="webhook_token" autocomplete="off" style="width:100%;max-width:420px;"
+                               placeholder="colar aqui o token definido no Asaas (ex.: whsec_...)">
+                        <button class="btn btn-sm btn-outline" type="submit">💾 Salvar token do Asaas</button>
+                    </form>
+                    <p class="muted" style="margin-top:6px;font-size:12px;">
+                        Use isto se o token vier do Asaas. Ele precisa ser <strong>idêntico</strong> ao
+                        campo “Token de autenticação” do webhook no Asaas — senão o webhook responde 401.
+                    </p>
+                </div>
             </td>
         </tr>
     </table>
