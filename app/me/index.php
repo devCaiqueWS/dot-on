@@ -49,10 +49,10 @@ $batidas_hoje = $st->fetchAll();
 // Próxima batida esperada
 $tipos_feitos = array_column($batidas_hoje, 'tipo');
 $proxima = null;
-if (!in_array('entrada', $tipos_feitos)) $proxima = ['tipo'=>'entrada', 'label'=>'Entrada', 'icon'=>'▶', 'cor'=>'#10b981'];
-elseif (!in_array('saida_intervalo', $tipos_feitos)) $proxima = ['tipo'=>'saida_intervalo', 'label'=>'Saída para intervalo', 'icon'=>'⏸', 'cor'=>'#f59e0b'];
-elseif (!in_array('retorno_intervalo', $tipos_feitos)) $proxima = ['tipo'=>'retorno_intervalo', 'label'=>'Retorno do intervalo', 'icon'=>'⏯', 'cor'=>'#0284c7'];
-elseif (!in_array('saida', $tipos_feitos)) $proxima = ['tipo'=>'saida', 'label'=>'Saída', 'icon'=>'⏹', 'cor'=>'#ef4444'];
+if (!in_array('entrada', $tipos_feitos)) $proxima = ['tipo'=>'entrada', 'label'=>'Registrar entrada', 'cor'=>'#059669'];
+elseif (!in_array('saida_intervalo', $tipos_feitos)) $proxima = ['tipo'=>'saida_intervalo', 'label'=>'Saída para intervalo', 'cor'=>'#d97706'];
+elseif (!in_array('retorno_intervalo', $tipos_feitos)) $proxima = ['tipo'=>'retorno_intervalo', 'label'=>'Retorno do intervalo', 'cor'=>'#0369a1'];
+elseif (!in_array('saida', $tipos_feitos)) $proxima = ['tipo'=>'saida', 'label'=>'Registrar saída', 'cor'=>'#dc2626'];
 
 // Mês atual - resumo
 $mes_inicio = date('Y-m-01');
@@ -108,109 +108,219 @@ $pct = $min_objetivo > 0 ? min(100, ($min_hoje / $min_objetivo) * 100) : 0;
 // Datas em português (date('l')/('F') sairiam em inglês)
 $dias_semana_pt = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
 $meses_pt = [1=>'janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+// Iniciais para o avatar (primeiro + último nome)
+$partes_nome = preg_split('/\s+/', trim($user['nome_completo']));
+$iniciais = mb_strtoupper(mb_substr($partes_nome[0], 0, 1) . (count($partes_nome) > 1 ? mb_substr(end($partes_nome), 0, 1) : ''));
+
+// Ícones de navegação (SVG stroke, herdam a cor do texto)
+$nav_icons = [
+    'home'          => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    'espelho'       => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 11h16"/></svg>',
+    'banco'         => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V10M7 10l-3 3m3-3 3 3"/><path d="M17 4v10m0 0 3-3m-3 3-3-3"/></svg>',
+    'justificativa' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 14h6M9 17h4"/></svg>',
+    'extra'         => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<meta name="theme-color" content="#0284c7">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f2b46">
 <title>Meu DOT-ON · <?= htmlspecialchars($user['nome_completo']) ?></title>
-<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>⏱</text></svg>">
 <style>
+:root{
+    --brand:#0369a1; --brand-forte:#0f2b46; --brand-claro:#eaf3fa;
+    --bg:#f4f6f9; --surface:#ffffff; --borda:#e3e8ef;
+    --texto:#1a2433; --texto-2:#5b6472; --texto-3:#98a1ae;
+    --ok:#059669; --erro:#dc2626; --alerta:#d97706; --info:#0369a1;
+    --radius:10px;
+    --sombra:0 1px 2px rgba(16,24,40,.05);
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e293b;min-height:100vh}
-.app{max-width:520px;margin:auto;background:white;min-height:100vh;display:flex;flex-direction:column}
-.topbar{background:linear-gradient(135deg,#0c4a6e,#0284c7);color:white;padding:16px 20px;position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,.1)}
-.topbar .who{font-size:.95rem;font-weight:600}
-.topbar .who small{display:block;opacity:.75;font-size:.72rem;font-weight:400;margin-top:2px}
-.topbar .menu-btn{background:rgba(255,255,255,.15);border:none;color:white;font-size:1.2rem;width:36px;height:36px;border-radius:50%;cursor:pointer}
-.tabs{display:flex;background:white;border-bottom:1px solid #e2e8f0;position:sticky;top:64px;z-index:9}
-.tab{flex:1;padding:13px 8px;text-align:center;font-size:.85rem;color:#94a3b8;cursor:pointer;border-bottom:3px solid transparent;font-weight:600;transition:all .15s}
-.tab.active{color:#0284c7;border-bottom-color:#0284c7}
-.tab .ic{display:block;font-size:1.4rem;margin-bottom:2px}
-.content{flex:1;padding:18px;padding-bottom:30px}
-.relog{text-align:center;font-family:'Courier New',monospace;font-size:2.8rem;font-weight:800;color:#0c4a6e;letter-spacing:.04em;margin:10px 0}
-.relog small{display:block;font-size:.9rem;color:#64748b;font-family:'Segoe UI',sans-serif;font-weight:500;margin-top:4px}
-.card{background:white;border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 2px 12px rgba(0,0,0,.05);border:1px solid #e2e8f0}
-.card h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:10px;font-weight:700}
-.batida-btn{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:22px;border:none;border-radius:14px;font-size:1.2rem;font-weight:700;color:white;cursor:pointer;margin-bottom:10px;transition:all .15s;box-shadow:0 6px 18px rgba(0,0,0,.15)}
-.batida-btn:active{transform:scale(.97)}
-.batida-btn .ic{font-size:1.6rem}
-.progress{background:#f1f5f9;border-radius:8px;height:8px;overflow:hidden;margin:10px 0 4px}
-.progress-bar{height:100%;background:linear-gradient(90deg,#0284c7,#38bdf8);transition:width .3s}
-.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-.stat{background:#f1f5f9;border-radius:10px;padding:12px;text-align:center}
-.stat .v{font-size:1.4rem;font-weight:800;color:#0c4a6e}
-.stat .l{font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
-.batidas-list{display:flex;flex-direction:column;gap:8px}
-.batida-item{display:flex;align-items:center;gap:12px;padding:10px;background:#f8fafc;border-radius:10px;font-size:.9rem}
-.batida-item .ic-tipo{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;color:white;flex-shrink:0}
-.batida-item .det{flex:1}
-.batida-item .nm{font-weight:600;color:#0c4a6e;text-transform:capitalize}
-.batida-item .hr{color:#64748b;font-size:.82rem}
-.batida-item .nsr{font-family:'Courier New',monospace;color:#94a3b8;font-size:.72rem}
-.tipo-entrada{background:#10b981}
-.tipo-saida_intervalo{background:#f59e0b}
-.tipo-retorno_intervalo{background:#0284c7}
-.tipo-saida{background:#ef4444}
+html{font-size:16px}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--bg);color:var(--texto);min-height:100vh}
+a{color:var(--brand)}
+button{font-family:inherit}
+svg{width:20px;height:20px;flex-shrink:0}
+
+/* ================= ESTRUTURA ================= */
+.layout{display:flex;min-height:100vh}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.conteudo{flex:1;width:100%;max-width:1180px;margin:0 auto;padding:20px 16px 96px}
+
+/* ---- Sidebar (desktop) ---- */
+.sidebar{display:none;width:236px;flex-shrink:0;background:var(--brand-forte);color:#cdd9e4;flex-direction:column;position:sticky;top:0;height:100vh}
+.sidebar .marca{display:flex;align-items:center;gap:10px;padding:22px 20px 18px;color:#fff}
+.sidebar .marca .logo{width:34px;height:34px;border-radius:8px;background:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;color:#fff}
+.sidebar .marca b{font-size:1.02rem;letter-spacing:.03em}
+.sidebar .marca small{display:block;font-weight:400;font-size:.68rem;color:#8fa3b5;margin-top:1px}
+.sidebar nav{flex:1;padding:6px 10px}
+.sidebar .tab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 12px;border-radius:8px;color:#b7c5d2;font-size:.9rem;font-weight:500;cursor:pointer;margin-bottom:2px;border:0;background:transparent;text-align:left}
+.sidebar .tab:hover{background:rgba(255,255,255,.06);color:#fff}
+.sidebar .tab.active{background:var(--brand);color:#fff;font-weight:600}
+.sidebar .rodape{padding:14px 16px;border-top:1px solid rgba(255,255,255,.08)}
+.sidebar .usuario{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sidebar .usuario .nome{font-size:.84rem;color:#fff;font-weight:600;line-height:1.2}
+.sidebar .usuario .sub{font-size:.7rem;color:#8fa3b5}
+.sidebar .rodape a{display:block;color:#b7c5d2;text-decoration:none;font-size:.8rem;padding:5px 0}
+.sidebar .rodape a:hover{color:#fff}
+
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex-shrink:0}
+
+/* ---- Barra superior (mobile) ---- */
+.appbar{display:flex;align-items:center;justify-content:space-between;background:var(--brand-forte);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:30}
+.appbar .marca{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.03em}
+.appbar .marca .logo{width:30px;height:30px;border-radius:7px;background:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.95rem}
+.appbar .marca small{display:block;font-weight:400;font-size:.65rem;color:#9fb2c2}
+.appbar .avatar{cursor:pointer;border:0}
+
+/* ---- Navegação inferior (mobile) ---- */
+.bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:var(--surface);border-top:1px solid var(--borda);padding-bottom:env(safe-area-inset-bottom)}
+.bottomnav .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;font-size:.62rem;font-weight:600;color:var(--texto-3);cursor:pointer;border:0;background:transparent}
+.bottomnav .tab svg{width:22px;height:22px}
+.bottomnav .tab.active{color:var(--brand)}
+
+/* ---- Cabeçalho da página ---- */
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 0 16px;flex-wrap:wrap}
+.page-head h1{font-size:1.35rem;font-weight:700;letter-spacing:-.01em}
+.page-head .sub{color:var(--texto-2);font-size:.85rem;margin-top:2px}
+
+/* ================= COMPONENTES ================= */
+.card{background:var(--surface);border:1px solid var(--borda);border-radius:var(--radius);box-shadow:var(--sombra);padding:20px;margin-bottom:16px}
+.card > h2{font-size:.95rem;font-weight:700;margin-bottom:14px}
+.card .desc{color:var(--texto-2);font-size:.83rem;margin:-8px 0 14px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;border-radius:8px;border:1px solid transparent;font-size:.9rem;font-weight:600;cursor:pointer;text-decoration:none;transition:filter .12s}
+.btn:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn-primario{background:var(--brand);color:#fff}
+.btn-contorno{background:var(--surface);color:var(--texto);border-color:var(--borda)}
+.btn-lg{width:100%;padding:15px 18px;font-size:1.02rem;border-radius:9px}
+
+.progress{background:#e9edf3;border-radius:6px;height:8px;overflow:hidden;margin:14px 0 6px}
+.progress-bar{height:100%;background:var(--brand);transition:width .3s}
+
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+.stat{background:var(--bg);border:1px solid var(--borda);border-radius:8px;padding:12px 10px;text-align:center}
+.stat .v{font-size:1.3rem;font-weight:700}
+.stat .l{font-size:.68rem;color:var(--texto-2);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+
+/* Relógio */
+.relogio-box{text-align:center;padding:6px 0 2px}
+.clock{font-variant-numeric:tabular-nums;font-size:2.9rem;font-weight:700;letter-spacing:.01em;color:var(--texto)}
+.clock small{display:block;font-size:.85rem;color:var(--texto-2);font-weight:500;margin-top:2px}
+
+/* Lista de batidas */
+.batidas-list{display:flex;flex-direction:column}
+.batida-item{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--borda);font-size:.88rem}
+.batida-item:last-child{border-bottom:0}
+.batida-item .ic-tipo{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.batida-item .det{flex:1;min-width:0}
+.batida-item .nm{font-weight:600;text-transform:capitalize}
+.batida-item .hr{color:var(--texto-2);font-size:.78rem}
+.batida-item .nsr{font-variant-numeric:tabular-nums;color:var(--texto-3);font-size:.72rem}
+.tipo-entrada{background:var(--ok)}
+.tipo-saida_intervalo{background:var(--alerta)}
+.tipo-retorno_intervalo{background:var(--info)}
+.tipo-saida{background:var(--erro)}
+
+/* Jornada do dia */
+.jornada{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
+.jornada .item{background:var(--bg);border:1px solid var(--borda);border-radius:8px;padding:12px 8px}
+.jornada .item .l{font-size:.68rem;color:var(--texto-2);text-transform:uppercase;letter-spacing:.05em}
+.jornada .item .v{font-size:1.05rem;font-weight:700;margin-top:3px}
+
+/* Tabela */
+.tbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.tbl th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--texto-2);padding:8px 10px;border-bottom:1px solid var(--borda);background:var(--bg)}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--borda)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl th:not(:first-child),.tbl td:not(:first-child){text-align:center}
+.tbl-wrap{overflow-x:auto}
+
+/* Chips de resumo */
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.chip{border:1px solid var(--borda);border-radius:8px;padding:10px;text-align:center;background:var(--bg)}
+.chip b{font-size:1.05rem}
+.chip small{display:block;color:var(--texto-2);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+
+/* Alertas */
+.alert{padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:.87rem;border:1px solid;display:flex;gap:10px;align-items:flex-start}
+.alert.ok{background:#ecfdf5;color:#065f46;border-color:#a7f3d0}
+.alert.warn{background:#fffbeb;color:#92400e;border-color:#fde68a}
+.alert.info{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}
+
+/* Formulários */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.8rem;font-weight:600;color:var(--texto-2);margin-bottom:6px}
+.field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:.9rem;font-family:inherit;background:var(--surface);color:var(--texto)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--brand-claro);border-color:var(--brand)}
+.field textarea{resize:vertical}
+.field small{display:block;color:var(--texto-3);font-size:.72rem;margin-top:4px}
+.field input[type=file]{border-style:dashed;background:var(--bg);font-size:.82rem}
+.field-row{display:flex;gap:12px}
+.field-row .field{flex:1}
+
+.segmented{display:flex;background:var(--bg);border:1px solid var(--borda);border-radius:8px;padding:3px;margin-bottom:16px;gap:3px}
+.segmented .seg{flex:1;padding:8px;border:0;background:transparent;border-radius:6px;font-size:.82rem;font-weight:600;color:var(--texto-2);cursor:pointer}
+.segmented .seg.active{background:var(--surface);color:var(--brand);box-shadow:var(--sombra)}
+
+/* Minhas solicitações */
+.jus-item{display:flex;align-items:flex-start;gap:10px;padding:12px 2px;border-bottom:1px solid var(--borda);font-size:.85rem}
+.jus-item:last-child{border-bottom:0}
+.jus-item .meta{flex:1;min-width:0}
+.jus-item .meta .t{font-weight:600}
+.jus-item .meta .d{color:var(--texto-2);font-size:.76rem;margin-top:2px}
+.jus-item .meta .m{color:var(--texto-2);font-size:.8rem;margin-top:4px}
+.st{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.st-pendente{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.st-aprovada{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+.st-rejeitada{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.jus-anexo{display:inline-block;margin-top:4px;font-size:.76rem}
+
+/* Menu lateral da conta (mobile) */
+.menu{position:fixed;top:0;right:-290px;width:290px;height:100vh;background:var(--surface);box-shadow:-6px 0 24px rgba(16,24,40,.14);transition:right .22s;z-index:110;padding:18px 0;display:flex;flex-direction:column}
+.menu.open{right:0}
+.menu .conta{display:flex;align-items:center;gap:12px;padding:6px 20px 16px;border-bottom:1px solid var(--borda)}
+.menu .conta .nome{font-weight:700;font-size:.92rem;line-height:1.25}
+.menu .conta .sub{color:var(--texto-2);font-size:.75rem}
+.menu a{display:block;padding:13px 22px;color:var(--texto);text-decoration:none;font-weight:500;font-size:.9rem;border-bottom:1px solid var(--bg)}
+.menu a:hover{background:var(--bg)}
+.menu .close{position:absolute;top:12px;right:12px;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--texto-2)}
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;display:none}
+.overlay.show{display:block}
+
+/* Abas */
 .tab-content{display:none}
 .tab-content.active{display:block}
-.alert{padding:12px 14px;border-radius:10px;margin-bottom:14px;font-size:.88rem;display:flex;gap:10px;align-items:flex-start}
-.alert.ok{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
-.alert.warn{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
-.alert.info{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd}
-.menu{position:fixed;top:0;right:-280px;width:280px;height:100vh;background:white;box-shadow:-4px 0 20px rgba(0,0,0,.15);transition:right .25s;z-index:100;padding:60px 0 20px}
-.menu.open{right:0}
-.menu a{display:flex;align-items:center;gap:12px;padding:14px 22px;color:#1e293b;text-decoration:none;font-weight:500;border-bottom:1px solid #f1f5f9}
-.menu a:hover{background:#f8fafc;color:#0284c7}
-.menu .close{position:absolute;top:14px;right:14px;background:none;border:none;font-size:1.5rem;cursor:pointer;color:#64748b}
-.overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;display:none}
-.overlay.show{display:block}
-.bottom-info{text-align:center;color:#94a3b8;font-size:.75rem;padding:14px;margin-top:auto}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.dot-live{display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;animation:pulse 1.5s infinite}
-.segmented{display:flex;background:#f1f5f9;border-radius:10px;padding:4px;margin-bottom:14px;gap:4px}
-.segmented .seg{flex:1;padding:9px 8px;border:none;background:transparent;border-radius:8px;font-size:.82rem;font-weight:600;color:#64748b;cursor:pointer;transition:all .15s}
-.segmented .seg.active{background:white;color:#0284c7;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-.jus-item{display:flex;align-items:flex-start;gap:10px;padding:11px;background:#f8fafc;border-radius:10px;font-size:.85rem;margin-bottom:8px}
-.jus-item .meta{flex:1}
-.jus-item .meta .t{font-weight:600;color:#0c4a6e}
-.jus-item .meta .d{color:#64748b;font-size:.78rem;margin-top:2px}
-.jus-item .meta .m{color:#475569;font-size:.8rem;margin-top:4px}
-.st{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:20px;white-space:nowrap}
-.st-pendente{background:#fef3c7;color:#92400e}
-.st-aprovada{background:#d1fae5;color:#065f46}
-.st-rejeitada{background:#fee2e2;color:#991b1b}
-.jus-anexo{display:inline-block;margin-top:4px;color:#0284c7;text-decoration:none;font-size:.78rem}
 
-/* ---- Responsivo: tablet ---- */
-@media (min-width:700px){
-.app{max-width:760px}
-.content{padding:24px 28px 40px}
-.stats{grid-template-columns:repeat(4,1fr)}
+/* Rodapé */
+.rodape-info{text-align:center;color:var(--texto-3);font-size:.72rem;padding:10px 0 4px}
+.dot-live{display:inline-block;width:7px;height:7px;background:var(--ok);border-radius:50%;margin-right:4px;animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* Grades por aba */
+.grid-2{display:grid;grid-template-columns:1fr;gap:0}
+
+/* ================= RESPONSIVO ================= */
+@media (min-width:640px){
+    .conteudo{padding:24px 24px 96px}
+    .stats{grid-template-columns:repeat(4,1fr)}
 }
-
-/* ---- Responsivo: desktop ---- */
-@media (min-width:1024px){
-body{padding:28px 16px}
-.app{max-width:1000px;min-height:auto;border-radius:18px;box-shadow:0 10px 40px rgba(2,8,23,.10);overflow:hidden}
-.topbar{position:static}
-.tabs{position:static}
-.tab{font-size:.9rem}
-.content{padding:28px 34px 44px}
-.tab-content.active{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
-.tab-content.active > .relog{grid-column:1/-1;margin:4px 0 0}
-.tab-content.active > .card,.tab-content.active > .alert{margin-bottom:0}
-/* abas de conteúdo único ficam em coluna central */
-#tab-espelho.active,#tab-banco.active,#tab-justificativa.active,#tab-extra.active{grid-template-columns:minmax(0,1fr);max-width:680px;margin:0 auto;width:100%}
+@media (min-width:960px){
+    .appbar,.bottomnav{display:none}
+    .sidebar{display:flex}
+    .conteudo{padding:28px 32px 32px}
+    .grid-2{grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}
+    .grid-2 > *{min-width:0}
+    .clock{font-size:3.4rem}
+    .page-head h1{font-size:1.5rem}
 }
-
-/* ---- Responsivo: telas grandes / TV ---- */
 @media (min-width:1600px){
-html{font-size:18px}
-.app{max-width:1150px}
-.relog{font-size:3.4rem}
+    html{font-size:17px}
+    .conteudo{max-width:1280px}
 }
 </style>
 </head>
@@ -218,253 +328,311 @@ html{font-size:18px}
 
 <div class="overlay" id="overlay" onclick="toggleMenu()"></div>
 <div class="menu" id="menu">
-<button class="close" onclick="toggleMenu()">✕</button>
-<a href="#" onclick="showTab('home');toggleMenu();return false">🏠 Início</a>
-<a href="#" onclick="showTab('espelho');toggleMenu();return false">📋 Espelho do mês</a>
-<a href="#" onclick="showTab('banco');toggleMenu();return false">⚖ Banco de horas</a>
-<a href="#" onclick="showTab('justificativa');toggleMenu();return false">📝 Justificar / Corrigir ponto</a>
-<a href="#" onclick="showTab('extra');toggleMenu();return false">⏰ Solicitar hora extra</a>
-<hr style="border:none;border-top:1px solid #e2e8f0;margin:8px 0">
-<a href="../admin/trocar_senha.php">🔐 Trocar senha</a>
-<a href="../admin/logout.php">🚪 Sair</a>
+    <button class="close" onclick="toggleMenu()" aria-label="Fechar">✕</button>
+    <div class="conta">
+        <span class="avatar"><?= htmlspecialchars($iniciais) ?></span>
+        <div>
+            <div class="nome"><?= htmlspecialchars($user['nome_completo']) ?></div>
+            <div class="sub">Mat. <?= htmlspecialchars($user['matricula']) ?> · <?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></div>
+        </div>
+    </div>
+    <a href="../admin/espelho_pdf.php?func=<?= $user['id'] ?>&mes=<?= substr($hoje,0,7) ?>" target="_blank">Baixar espelho em PDF</a>
+    <a href="../admin/trocar_senha.php">Trocar senha</a>
+    <a href="../admin/logout.php">Sair da conta</a>
 </div>
 
-<div class="app">
+<div class="layout">
 
-<div class="topbar">
-<div class="who">
-<?= htmlspecialchars(explode(' ', $user['nome_completo'])[0]) ?> 👋
-<small>🏢 <?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></small>
-</div>
-<button class="menu-btn" onclick="toggleMenu()">☰</button>
-</div>
+<!-- Sidebar (desktop) -->
+<aside class="sidebar">
+    <div class="marca">
+        <span class="logo">D</span>
+        <div><b>DOT-ON</b><small>Portal do Funcionário</small></div>
+    </div>
+    <nav>
+        <button class="tab active" data-tab="home"><?= $nav_icons['home'] ?>Registrar ponto</button>
+        <button class="tab" data-tab="espelho"><?= $nav_icons['espelho'] ?>Espelho do mês</button>
+        <button class="tab" data-tab="banco"><?= $nav_icons['banco'] ?>Banco de horas</button>
+        <button class="tab" data-tab="justificativa"><?= $nav_icons['justificativa'] ?>Justificativas</button>
+        <button class="tab" data-tab="extra"><?= $nav_icons['extra'] ?>Hora extra</button>
+    </nav>
+    <div class="rodape">
+        <div class="usuario">
+            <span class="avatar"><?= htmlspecialchars($iniciais) ?></span>
+            <div>
+                <div class="nome"><?= htmlspecialchars($partes_nome[0]) ?></div>
+                <div class="sub"><?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></div>
+            </div>
+        </div>
+        <a href="../admin/trocar_senha.php">Trocar senha</a>
+        <a href="../admin/logout.php">Sair da conta</a>
+    </div>
+</aside>
 
-<div class="tabs">
-<div class="tab active" data-tab="home"><span class="ic">⏱</span>Bater Ponto</div>
-<div class="tab" data-tab="espelho"><span class="ic">📋</span>Espelho</div>
-<div class="tab" data-tab="banco"><span class="ic">⚖</span>Banco</div>
-</div>
+<div class="main">
 
-<div class="content">
+<!-- Barra superior (mobile) -->
+<header class="appbar">
+    <div class="marca">
+        <span class="logo">D</span>
+        <div>DOT-ON<small><?= htmlspecialchars($empresa['nome_fantasia'] ?: $empresa['razao_social']) ?></small></div>
+    </div>
+    <button class="avatar" onclick="toggleMenu()" aria-label="Conta"><?= htmlspecialchars($iniciais) ?></button>
+</header>
 
-<!-- TAB HOME (Bater ponto) -->
+<div class="conteudo">
+
+<!-- ============ ABA: REGISTRAR PONTO ============ -->
 <div class="tab-content active" id="tab-home">
+    <div class="page-head">
+        <div>
+            <h1>Olá, <?= htmlspecialchars($partes_nome[0]) ?></h1>
+            <div class="sub"><?= ucfirst($dias_semana_pt[(int)date('w')]) ?>, <?= date('d') ?> de <?= $meses_pt[(int)date('n')] ?> de <?= date('Y') ?></div>
+        </div>
+    </div>
 
-<div class="relog" id="relog">
-<?= date('H:i:s') ?>
-<small><?= $dias_semana_pt[(int)date('w')] ?>, <?= date('d') ?> de <?= $meses_pt[(int)date('n')] ?> de <?= date('Y') ?></small>
+    <div class="grid-2">
+        <div>
+            <div class="card">
+                <div class="relogio-box">
+                    <div class="clock" id="relog"><?= date('H:i:s') ?> <small>hora oficial do registro</small></div>
+                </div>
+
+                <div style="margin-top:16px">
+                <?php if ($proxima): ?>
+                    <button class="btn btn-lg" style="background:<?= $proxima['cor'] ?>;color:#fff" onclick="baterPonto('<?= $proxima['tipo'] ?>')">
+                        <?= $proxima['label'] ?>
+                    </button>
+                    <p style="text-align:center;font-size:.74rem;color:var(--texto-3);margin-top:8px">A batida pelo navegador exige a sua localização.</p>
+                <?php else: ?>
+                    <div class="alert ok"><strong>Expediente concluído.</strong> Todas as batidas de hoje foram registradas.</div>
+                <?php endif; ?>
+                </div>
+
+                <div class="progress"><div class="progress-bar" style="width:<?= number_format($pct,1) ?>%"></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:.78rem;color:var(--texto-2)">
+                    <span><strong><?= $horas_hoje ?>h <?= $mins_hoje ?>min</strong> trabalhados</span>
+                    <span>jornada de <?= floor($min_objetivo/60) ?>h<?= $min_objetivo%60 ? sprintf('%02d',$min_objetivo%60) : '' ?></span>
+                </div>
+
+                <div class="stats">
+                    <div class="stat"><div class="v"><?= count($batidas_hoje) ?></div><div class="l">batidas hoje</div></div>
+                    <div class="stat"><div class="v"><?= number_format($pct, 0) ?>%</div><div class="l">meta diária</div></div>
+                    <div class="stat"><div class="v"><?= $resumo_mes['dias_trabalhados'] ?: 0 ?></div><div class="l">dias no mês</div></div>
+                    <div class="stat"><div class="v" style="color:<?= $ap_mes['saldo_periodo']>=0?'var(--ok)':'var(--erro)' ?>"><?= ($ap_mes['saldo_periodo']>=0?'+':'-') . floor(abs($ap_mes['saldo_periodo'])/60) ?>h<?= sprintf('%02d', abs($ap_mes['saldo_periodo'])%60) ?></div><div class="l">saldo do mês</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="card">
+                <h2>Batidas de hoje</h2>
+                <?php if (!$batidas_hoje): ?>
+                    <p style="color:var(--texto-3);font-size:.86rem;padding:10px 0">Nenhuma batida registrada ainda hoje.</p>
+                <?php else: ?>
+                <div class="batidas-list">
+                    <?php foreach (array_reverse($batidas_hoje) as $b): ?>
+                    <div class="batida-item">
+                        <span class="ic-tipo tipo-<?= $b['tipo'] ?>"></span>
+                        <div class="det">
+                            <div class="nm"><?= str_replace('_',' ',$b['tipo']) ?></div>
+                            <div class="hr"><?= date('H:i:s', strtotime($b['momento'])) ?> · <span class="nsr">NSR <?= str_pad($b['nsr'],6,'0',STR_PAD_LEFT) ?></span></div>
+                        </div>
+                        <a href="../validar.php?nsr=<?= $b['nsr'] ?>&t=<?= substr($b['hash_registro'] ?? '',0,16) ?>" target="_blank" style="text-decoration:none;font-size:.78rem;font-weight:600">CRP</a>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($escala): ?>
+            <div class="card">
+                <h2>Sua jornada de hoje</h2>
+                <?php if ($folga_hoje): ?>
+                    <div class="alert warn"><strong>Folga hoje.</strong> Sua escala não prevê expediente.</div>
+                <?php endif; ?>
+                <div class="jornada">
+                    <div class="item"><div class="l">Entrada</div><div class="v"><?= $folga_hoje ? '—' : substr($escala['entrada'],0,5) ?></div></div>
+                    <div class="item"><div class="l">Intervalo</div><div class="v"><?= $folga_hoje ? '—' : $almoco_hoje.' min' ?></div></div>
+                    <div class="item"><div class="l">Saída</div><div class="v"><?= $folga_hoje ? '—' : substr($escala['saida'],0,5) ?></div></div>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
 </div>
 
-<div class="card">
-<h3>Hoje</h3>
-
-<?php if ($proxima): ?>
-<button class="batida-btn" style="background:linear-gradient(135deg,<?= $proxima['cor'] ?>,<?= $proxima['cor'] ?>dd)" onclick="baterPonto('<?= $proxima['tipo'] ?>')">
-<span class="ic"><?= $proxima['icon'] ?></span>
-<?= $proxima['label'] ?>
-</button>
-<?php else: ?>
-<div class="alert ok">
-✅ <strong>Expediente concluído!</strong> Todas as batidas registradas.
-</div>
-<?php endif; ?>
-
-<p style="text-align:center;font-size:.72rem;color:#94a3b8;margin:-2px 0 8px">📍 A batida pelo navegador exige a sua localização.</p>
-<div class="progress"><div class="progress-bar" style="width:<?= number_format($pct,1) ?>%"></div></div>
-<div style="display:flex;justify-content:space-between;font-size:.78rem;color:#64748b;margin-top:4px">
-<span><?= $horas_hoje ?>h <?= $mins_hoje ?>min trabalhados</span>
-<span><?= floor($min_objetivo/60) ?>h diárias</span>
-</div>
-
-<div class="stats">
-<div class="stat">
-<div class="v"><?= count($batidas_hoje) ?></div>
-<div class="l">batidas hoje</div>
-</div>
-<div class="stat">
-<div class="v"><?= number_format($pct, 0) ?>%</div>
-<div class="l">meta diária</div>
-</div>
-</div>
-</div>
-
-<div class="card">
-<h3>Batidas de hoje</h3>
-<?php if (!$batidas_hoje): ?>
-<p style="color:#94a3b8;text-align:center;padding:14px">Nenhuma batida registrada ainda hoje.</p>
-<?php else: ?>
-<div class="batidas-list">
-<?php foreach (array_reverse($batidas_hoje) as $b): 
-    $ic = ['entrada'=>'▶','saida_intervalo'=>'⏸','retorno_intervalo'=>'⏯','saida'=>'⏹'][$b['tipo']] ?? '·';
-?>
-<div class="batida-item">
-<div class="ic-tipo tipo-<?= $b['tipo'] ?>"><?= $ic ?></div>
-<div class="det">
-<div class="nm"><?= str_replace('_',' ',$b['tipo']) ?></div>
-<div class="hr"><?= date('H:i:s', strtotime($b['momento'])) ?> · <span class="nsr">NSR <?= str_pad($b['nsr'],6,'0',STR_PAD_LEFT) ?></span></div>
-</div>
-<a href="../validar.php?nsr=<?= $b['nsr'] ?>&t=<?= substr($b['hash_registro'] ?? '',0,16) ?>" target="_blank" style="color:#0284c7;text-decoration:none;font-size:.78rem">CRP →</a>
-</div>
-<?php endforeach; ?>
-</div>
-<?php endif; ?>
-</div>
-
-<?php if ($escala): ?>
-<div class="card">
-<h3>Sua jornada</h3>
-<div style="display:flex;justify-content:space-around;text-align:center;gap:10px">
-<div><div style="font-size:1.4rem;font-weight:800;color:#10b981">▶</div><small style="color:#64748b">Entrada<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : substr($escala['entrada'],0,5) ?></strong></small></div>
-<div><div style="font-size:1.4rem;font-weight:800;color:#f59e0b">🍽</div><small style="color:#64748b">Almoço<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : $almoco_hoje.'min' ?></strong></small></div>
-<div><div style="font-size:1.4rem;font-weight:800;color:#ef4444">⏹</div><small style="color:#64748b">Saída<br><strong style="color:#0c4a6e"><?= $folga_hoje ? '—' : substr($escala['saida'],0,5) ?></strong></small></div>
-</div>
-<?php if ($folga_hoje): ?><p style="text-align:center;color:#f59e0b;font-weight:600;margin-top:8px">🌴 Folga hoje</p><?php endif; ?>
-</div>
-<?php endif; ?>
-</div>
-
-<!-- TAB ESPELHO -->
+<!-- ============ ABA: ESPELHO ============ -->
 <div class="tab-content" id="tab-espelho">
-<div class="card">
-<h3>📅 Mês atual</h3>
-<p style="color:#94a3b8;margin-bottom:12px">Resumo: <strong><?= $resumo_mes['dias_trabalhados'] ?: 0 ?> dias</strong> trabalhados</p>
-<div id="espelho-content">
-<p style="color:#94a3b8;text-align:center;padding:20px">Carregando espelho...</p>
-</div>
-<a href="../admin/espelho_pdf.php?func=<?= $user['id'] ?>&mes=<?= substr($hoje,0,7) ?>" target="_blank" class="batida-btn" style="background:linear-gradient(135deg,#0284c7,#38bdf8);margin-top:10px;font-size:.95rem;padding:14px">📥 Baixar Espelho em PDF</a>
-</div>
+    <div class="page-head">
+        <div>
+            <h1>Espelho do mês</h1>
+            <div class="sub"><?= ucfirst($meses_pt[(int)date('n')]) ?> de <?= date('Y') ?> · <?= $resumo_mes['dias_trabalhados'] ?: 0 ?> dias com registro</div>
+        </div>
+        <a href="../admin/espelho_pdf.php?func=<?= $user['id'] ?>&mes=<?= substr($hoje,0,7) ?>" target="_blank" class="btn btn-contorno">Baixar PDF</a>
+    </div>
+    <div class="card">
+        <div id="espelho-content">
+            <p style="color:var(--texto-3);text-align:center;padding:20px">Carregando espelho...</p>
+        </div>
+    </div>
 </div>
 
-<!-- TAB BANCO -->
+<!-- ============ ABA: BANCO DE HORAS ============ -->
 <div class="tab-content" id="tab-banco">
-<div class="card">
-<h3>⚖ Banco de horas</h3>
-<?php
-// Saldo do mês pela apuração oficial (mesma do painel admin / espelho).
-$saldo_min = $ap_mes['saldo_periodo'];
-$saldo_h = intdiv(abs($saldo_min), 60);
-$saldo_m = abs($saldo_min) % 60;
-?>
-<div style="text-align:center;padding:14px">
-<div style="font-size:2.4rem;font-weight:800;color:<?= $saldo_min>=0?'#10b981':'#ef4444' ?>">
-<?= $saldo_min>=0?'+':'-' ?><?= $saldo_h ?>h <?= $saldo_m ?>min
-</div>
-<small style="color:#64748b">Saldo do mês de <?= $meses_pt[(int)date('n', strtotime($mes_inicio))] ?></small>
-</div>
-<div class="stats">
-<div class="stat"><div class="v" style="color:#10b981"><?= floor($ap_mes['total_positivo']/60) ?>h<?= $ap_mes['total_positivo']%60 ? sprintf('%02d',$ap_mes['total_positivo']%60) : '' ?></div><div class="l">a favor</div></div>
-<div class="stat"><div class="v" style="color:#ef4444"><?= floor(abs($ap_mes['total_negativo'])/60) ?>h<?= abs($ap_mes['total_negativo'])%60 ? sprintf('%02d',abs($ap_mes['total_negativo'])%60) : '' ?></div><div class="l">em débito</div></div>
-<div class="stat"><div class="v"><?= floor(($resumo_mes['min_total']??0)/60) ?>h</div><div class="l">trabalhadas</div></div>
-<div class="stat"><div class="v"><?= $resumo_mes['dias_trabalhados']?:0 ?></div><div class="l">dias</div></div>
-</div>
-</div>
+    <div class="page-head">
+        <div>
+            <h1>Banco de horas</h1>
+            <div class="sub">Apuração de <?= $meses_pt[(int)date('n', strtotime($mes_inicio))] ?>, pela sua jornada por dia da semana</div>
+        </div>
+    </div>
+    <div class="card">
+        <?php
+        // Saldo do mês pela apuração oficial (mesma do painel admin / espelho).
+        $saldo_min = $ap_mes['saldo_periodo'];
+        $saldo_h = intdiv(abs($saldo_min), 60);
+        $saldo_m = abs($saldo_min) % 60;
+        ?>
+        <div style="text-align:center;padding:10px 0 16px">
+            <div style="font-size:2.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:<?= $saldo_min>=0?'var(--ok)':'var(--erro)' ?>">
+                <?= $saldo_min>=0?'+':'-' ?><?= $saldo_h ?>h <?= sprintf('%02d',$saldo_m) ?>min
+            </div>
+            <div style="color:var(--texto-2);font-size:.82rem;margin-top:2px">saldo do mês de <?= $meses_pt[(int)date('n', strtotime($mes_inicio))] ?></div>
+        </div>
+        <div class="stats">
+            <div class="stat"><div class="v" style="color:var(--ok)"><?= floor($ap_mes['total_positivo']/60) ?>h<?= sprintf('%02d',$ap_mes['total_positivo']%60) ?></div><div class="l">a favor</div></div>
+            <div class="stat"><div class="v" style="color:var(--erro)"><?= floor(abs($ap_mes['total_negativo'])/60) ?>h<?= sprintf('%02d',abs($ap_mes['total_negativo'])%60) ?></div><div class="l">em débito</div></div>
+            <div class="stat"><div class="v"><?= floor(($resumo_mes['min_total']??0)/60) ?>h</div><div class="l">trabalhadas</div></div>
+            <div class="stat"><div class="v"><?= $resumo_mes['dias_trabalhados']?:0 ?></div><div class="l">dias</div></div>
+        </div>
+    </div>
 </div>
 
-<!-- TAB JUSTIFICATIVA / CORREÇÃO -->
+<!-- ============ ABA: JUSTIFICATIVAS ============ -->
 <div class="tab-content" id="tab-justificativa">
-<div class="card">
-<h3>📝 Justificar ou corrigir ponto</h3>
+    <div class="page-head">
+        <div>
+            <h1>Justificativas</h1>
+            <div class="sub">Justifique faltas e atrasos ou corrija uma batida esquecida</div>
+        </div>
+    </div>
+    <div class="grid-2">
+        <div class="card">
+            <div class="segmented">
+                <button type="button" class="seg active" data-cat="justificativa" onclick="setCategoria('justificativa')">Justificar falta/atraso</button>
+                <button type="button" class="seg" data-cat="correcao" onclick="setCategoria('correcao')">Corrigir batida esquecida</button>
+            </div>
 
-<div class="segmented">
-<button type="button" class="seg active" data-cat="justificativa" onclick="setCategoria('justificativa')">Justificar falta/atraso</button>
-<button type="button" class="seg" data-cat="correcao" onclick="setCategoria('correcao')">Corrigir batida esquecida</button>
+            <form id="form-justificativa" onsubmit="enviarJustificativa(event)" enctype="multipart/form-data">
+                <input type="hidden" name="categoria" id="jus-categoria" value="justificativa">
+
+                <div class="field">
+                    <label>Data</label>
+                    <input type="date" name="data_ref" required value="<?= $hoje ?>" max="<?= $hoje ?>">
+                </div>
+
+                <!-- Campos da JUSTIFICATIVA -->
+                <div id="campos-justificativa">
+                    <div class="field">
+                        <label>Tipo</label>
+                        <select name="tipo">
+                            <option value="atraso">Atraso</option>
+                            <option value="falta">Falta</option>
+                            <option value="saida_antecipada">Saída antecipada</option>
+                            <option value="medico">Consulta médica</option>
+                            <option value="atestado">Atestado médico</option>
+                            <option value="abono">Abono</option>
+                            <option value="feriado">Feriado</option>
+                            <option value="outro">Outro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Campos da CORREÇÃO -->
+                <div id="campos-correcao" style="display:none">
+                    <div class="alert info">Use quando esqueceu de registrar uma batida. A correção precisa ser aprovada pelo gestor para entrar no espelho.</div>
+                    <div class="field-row">
+                        <div class="field">
+                            <label>Qual batida?</label>
+                            <select name="batida_tipo">
+                                <option value="entrada">Entrada</option>
+                                <option value="saida_intervalo">Saída p/ intervalo</option>
+                                <option value="retorno_intervalo">Retorno do intervalo</option>
+                                <option value="saida">Saída</option>
+                            </select>
+                        </div>
+                        <div class="field" style="flex:0 0 40%">
+                            <label>Horário correto</label>
+                            <input type="time" name="horario_correto">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Motivo</label>
+                    <textarea name="motivo" required minlength="10" rows="3" placeholder="Descreva o motivo..."></textarea>
+                </div>
+
+                <div class="field">
+                    <label>Comprovação (opcional)</label>
+                    <input type="file" name="anexo" accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf">
+                    <small>Atestado, declaração, etc. PDF/JPG/PNG até 8 MB.</small>
+                </div>
+
+                <button class="btn btn-primario btn-lg" type="submit">Enviar para aprovação</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Minhas solicitações</h2>
+            <div id="minhas-justificativas">
+                <p style="color:var(--texto-3);text-align:center;padding:14px">Carregando...</p>
+            </div>
+        </div>
+    </div>
 </div>
 
-<form id="form-justificativa" onsubmit="enviarJustificativa(event)" enctype="multipart/form-data">
-<input type="hidden" name="categoria" id="jus-categoria" value="justificativa">
-
-<div style="margin-bottom:12px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Data</label>
-<input type="date" name="data_ref" required value="<?= $hoje ?>" max="<?= $hoje ?>" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px">
-</div>
-
-<!-- Campos da JUSTIFICATIVA -->
-<div id="campos-justificativa">
-<div style="margin-bottom:12px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Tipo</label>
-<select name="tipo" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px">
-<option value="atraso">Atraso</option>
-<option value="falta">Falta</option>
-<option value="saida_antecipada">Saída antecipada</option>
-<option value="medico">Consulta médica</option>
-<option value="atestado">Atestado médico</option>
-<option value="abono">Abono</option>
-<option value="feriado">Feriado</option>
-<option value="outro">Outro</option>
-</select>
-</div>
-</div>
-
-<!-- Campos da CORREÇÃO -->
-<div id="campos-correcao" style="display:none">
-<div class="alert info" style="margin-bottom:12px">ℹ️ Use quando esqueceu de registrar uma batida. A correção precisa ser aprovada pelo gestor para entrar no espelho.</div>
-<div style="display:flex;gap:10px;margin-bottom:12px">
-<div style="flex:1">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Qual batida?</label>
-<select name="batida_tipo" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px">
-<option value="entrada">Entrada</option>
-<option value="saida_intervalo">Saída p/ intervalo</option>
-<option value="retorno_intervalo">Retorno do intervalo</option>
-<option value="saida">Saída</option>
-</select>
-</div>
-<div style="width:42%">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Horário correto</label>
-<input type="time" name="horario_correto" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px">
-</div>
-</div>
-</div>
-
-<div style="margin-bottom:12px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Motivo</label>
-<textarea name="motivo" required minlength="10" rows="3" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:inherit;resize:vertical" placeholder="Descreva o motivo..."></textarea>
-</div>
-
-<div style="margin-bottom:14px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Comprovação (opcional)</label>
-<input type="file" name="anexo" accept=".pdf,.jpg,.jpeg,.png,.webp,image/*,application/pdf" style="width:100%;padding:9px;border:1.5px dashed #cbd5e1;border-radius:8px;background:#f8fafc;font-size:.85rem">
-<small style="color:#94a3b8;font-size:.72rem">Atestado, declaração, etc. PDF/JPG/PNG até 8 MB.</small>
-</div>
-
-<button class="batida-btn" type="submit" style="background:linear-gradient(135deg,#0284c7,#38bdf8)">📨 Enviar para aprovação</button>
-</form>
-</div>
-
-<div class="card">
-<h3>📌 Minhas solicitações</h3>
-<div id="minhas-justificativas">
-<p style="color:#94a3b8;text-align:center;padding:14px">Carregando...</p>
-</div>
-</div>
-</div>
-
-<!-- TAB EXTRA -->
+<!-- ============ ABA: HORA EXTRA ============ -->
 <div class="tab-content" id="tab-extra">
-<div class="card">
-<h3>⏰ Solicitar hora extra</h3>
-<form onsubmit="solicitarExtra(event)">
-<div style="margin-bottom:12px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Quantidade (minutos)</label>
-<input type="number" name="minutos" required min="30" max="240" step="30" value="60" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px">
-<small style="color:#94a3b8;font-size:.75rem">Entre 30 e 240 minutos (4h máximo)</small>
-</div>
-<div style="margin-bottom:14px">
-<label style="display:block;font-size:.82rem;font-weight:600;color:#475569;margin-bottom:6px">Justificativa</label>
-<textarea name="justificativa" required minlength="20" rows="3" style="width:100%;padding:11px 14px;border:1.5px solid #cbd5e1;border-radius:8px;font-family:inherit" placeholder="Por que precisa fazer hora extra?"></textarea>
-</div>
-<button class="batida-btn" type="submit" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)">⏰ Solicitar Aprovação</button>
-</form>
-</div>
-</div>
-
-</div>
-
-<div class="bottom-info">
-DOT-ON v1.0 · <span class="dot-live"></span> Online<br>
-<a href="../" style="color:#94a3b8">dot-on.com.br/app</a>
+    <div class="page-head">
+        <div>
+            <h1>Hora extra</h1>
+            <div class="sub">Solicite aprovação do gestor antes de estender o expediente</div>
+        </div>
+    </div>
+    <div class="card" style="max-width:560px">
+        <form onsubmit="solicitarExtra(event)">
+            <div class="field">
+                <label>Quantidade (minutos)</label>
+                <input type="number" name="minutos" required min="30" max="240" step="30" value="60">
+                <small>Entre 30 e 240 minutos (4h no máximo)</small>
+            </div>
+            <div class="field">
+                <label>Justificativa</label>
+                <textarea name="justificativa" required minlength="20" rows="3" placeholder="Por que precisa fazer hora extra?"></textarea>
+            </div>
+            <button class="btn btn-primario btn-lg" type="submit">Solicitar aprovação</button>
+        </form>
+    </div>
 </div>
 
+<div class="rodape-info">
+    DOT-ON v1.0 · <span class="dot-live"></span>Online · <a href="../" style="color:var(--texto-3)">dot-on.com.br/app</a>
 </div>
+
+</div><!-- /conteudo -->
+
+<!-- Navegação inferior (mobile) -->
+<nav class="bottomnav">
+    <button class="tab active" data-tab="home"><?= $nav_icons['home'] ?>Início</button>
+    <button class="tab" data-tab="espelho"><?= $nav_icons['espelho'] ?>Espelho</button>
+    <button class="tab" data-tab="banco"><?= $nav_icons['banco'] ?>Banco</button>
+    <button class="tab" data-tab="justificativa"><?= $nav_icons['justificativa'] ?>Justificar</button>
+    <button class="tab" data-tab="extra"><?= $nav_icons['extra'] ?>Extra</button>
+</nav>
+
+</div><!-- /main -->
+</div><!-- /layout -->
 
 <script>
 const token = <?= json_encode($user['api_token']) ?>;
@@ -480,6 +648,7 @@ function showTab(name) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + name));
     if (name === 'espelho') carregarEspelho();
     if (name === 'justificativa') carregarMinhasJustificativas();
+    window.scrollTo({top: 0});
 }
 
 function setCategoria(cat) {
@@ -536,7 +705,7 @@ async function baterPonto(tipo) {
     try {
         loc = await obterLocalizacao();
     } catch(e) {
-        alert('📍 ' + e.message);
+        alert(e.message);
         return;
     }
     try {
@@ -552,10 +721,10 @@ async function baterPonto(tipo) {
         });
         const j = await r.json();
         if (j.ok) {
-            alert('✅ Ponto registrado! NSR #' + j.nsr);
+            alert('Ponto registrado! NSR #' + j.nsr);
             location.reload();
         } else {
-            alert('❌ Erro: ' + (j.erro || 'tente novamente'));
+            alert('Erro: ' + (j.erro || 'tente novamente'));
         }
     } catch(e) { alert('Erro de conexão: ' + e.message); }
 }
@@ -572,19 +741,19 @@ async function carregarEspelho() {
         const r = await fetch(API + '/sessao/mes', {headers:{'X-Auth-Token': token}});
         const j = await r.json();
         if (!j.ok || !j.dias) {
-            div.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px">Sem dados disponíveis.</p>';
+            div.innerHTML = '<p style="color:var(--texto-3);text-align:center;padding:20px">Sem dados disponíveis.</p>';
             return;
         }
         let html = '';
         if (j.resumo) {
-            html += `<div style="display:flex;gap:8px;margin-bottom:10px">
-                <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:8px;text-align:center"><b style="color:#16a34a">${fmtSaldoMin(j.resumo.minutos_a_favor)}</b><br><small style="color:#64748b">a favor</small></div>
-                <div style="flex:1;background:#fef2f2;border-radius:8px;padding:8px;text-align:center"><b style="color:#dc2626">${fmtSaldoMin(j.resumo.minutos_em_debito)}</b><br><small style="color:#64748b">em débito</small></div>
-                <div style="flex:1;background:#f1f5f9;border-radius:8px;padding:8px;text-align:center"><b style="color:${j.resumo.saldo_minutos>=0?'#16a34a':'#dc2626'}">${fmtSaldoMin(j.resumo.saldo_minutos)}</b><br><small style="color:#64748b">saldo</small></div>
+            html += `<div class="chips">
+                <div class="chip"><b style="color:var(--ok)">${fmtSaldoMin(j.resumo.minutos_a_favor)}</b><small>a favor</small></div>
+                <div class="chip"><b style="color:var(--erro)">${fmtSaldoMin(j.resumo.minutos_em_debito)}</b><small>em débito</small></div>
+                <div class="chip"><b style="color:${j.resumo.saldo_minutos>=0?'var(--ok)':'var(--erro)'}">${fmtSaldoMin(j.resumo.saldo_minutos)}</b><small>saldo</small></div>
             </div>`;
         }
-        const corStatus = {falta:'#dc2626', falta_abonada:'#16a34a', feriado:'#0d9488'};
-        html += '<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left">Dia</th><th>Trab.</th><th>Saldo</th><th>Status</th></tr></thead><tbody>';
+        const corStatus = {falta:'var(--erro)', falta_abonada:'var(--ok)', feriado:'#0d9488'};
+        html += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Dia</th><th>Trabalhado</th><th>Saldo</th><th>Status</th></tr></thead><tbody>';
         j.dias.forEach(d => {
             const min = parseInt(d.minutos_trabalhados || 0);
             const h = Math.floor(min/60), m = min%60;
@@ -592,15 +761,15 @@ async function carregarEspelho() {
             const saldo = parseInt(d.saldo || 0);
             const st = (d.status || '').replace('_',' ');
             html += `<tr>
-                <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">${d.data_ref.substring(8,10)}/${d.data_ref.substring(5,7)}</td>
-                <td style="text-align:center">${h}h${String(m).padStart(2,'0')}</td>
-                <td style="text-align:center;font-weight:600;color:${temSaldo?(saldo>=0?'#16a34a':'#dc2626'):'#94a3b8'}">${temSaldo?fmtSaldoMin(saldo):'—'}</td>
-                <td style="text-align:center"><small style="color:${corStatus[d.status]||'#64748b'}">${st}</small></td>
+                <td>${d.data_ref.substring(8,10)}/${d.data_ref.substring(5,7)}</td>
+                <td>${h}h${String(m).padStart(2,'0')}</td>
+                <td style="font-weight:600;color:${temSaldo?(saldo>=0?'var(--ok)':'var(--erro)'):'var(--texto-3)'}">${temSaldo?fmtSaldoMin(saldo):'—'}</td>
+                <td><small style="color:${corStatus[d.status]||'var(--texto-2)'}">${st}</small></td>
             </tr>`;
         });
-        html += '</tbody></table>';
+        html += '</tbody></table></div>';
         div.innerHTML = html;
-    } catch(e) { div.innerHTML = '<p style="color:#ef4444">Erro: ' + e.message + '</p>'; }
+    } catch(e) { div.innerHTML = '<p style="color:var(--erro)">Erro: ' + e.message + '</p>'; }
 }
 
 async function enviarJustificativa(e) {
@@ -612,11 +781,11 @@ async function enviarJustificativa(e) {
         const r = await fetch(API + '/justificativa', {method:'POST', headers:{'X-Auth-Token':token}, body: fd});
         const j = await r.json();
         if (j.ok) {
-            alert('✅ Enviado! Aguardando aprovação do gestor.');
+            alert('Enviado! Aguardando aprovação do gestor.');
             e.target.reset();
             setCategoria('justificativa');
             carregarMinhasJustificativas();
-        } else alert('❌ ' + (j.erro || 'erro'));
+        } else alert(j.erro || 'Erro ao enviar.');
     } catch(err) { alert('Erro: ' + err.message); }
     finally { btn.disabled = false; }
 }
@@ -628,19 +797,19 @@ async function carregarMinhasJustificativas() {
         const r = await fetch(API + '/justificativas/minhas', {headers:{'X-Auth-Token': token}});
         const j = await r.json();
         if (!j.ok || !j.itens || !j.itens.length) {
-            div.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:14px">Nenhuma solicitação enviada ainda.</p>';
+            div.innerHTML = '<p style="color:var(--texto-3);text-align:center;padding:14px">Nenhuma solicitação enviada ainda.</p>';
             return;
         }
         div.innerHTML = j.itens.map(it => {
             const dt = it.data_ref.substring(8,10)+'/'+it.data_ref.substring(5,7)+'/'+it.data_ref.substring(0,4);
-            const icone = it.categoria === 'correcao' ? '🛠' : '📝';
+            const rotulo = it.categoria === 'correcao' ? 'Correção' : 'Justificativa';
             let extra = '';
             if (it.categoria === 'correcao' && it.horario_correto) extra = ' · ' + it.tipo_label + ' ' + it.horario_correto.substring(0,5);
-            const anexo = it.tem_anexo ? `<a class="jus-anexo" href="../admin/anexo.php?id=${it.id}&token=${encodeURIComponent(token)}" target="_blank">📎 ver comprovação</a>` : '';
+            const anexo = it.tem_anexo ? `<a class="jus-anexo" href="../admin/anexo.php?id=${it.id}&token=${encodeURIComponent(token)}" target="_blank">Ver comprovação</a>` : '';
             const dec = it.motivo_decisao ? `<div class="d" style="margin-top:3px"><em>Gestor: ${escapeHtml(it.motivo_decisao)}</em></div>` : '';
             return `<div class="jus-item">
                 <div class="meta">
-                    <div class="t">${icone} ${escapeHtml(it.tipo_label)}${extra}</div>
+                    <div class="t">${rotulo} · ${escapeHtml(it.tipo_label)}${extra}</div>
                     <div class="d">${dt}</div>
                     <div class="m">${escapeHtml(it.motivo)}</div>
                     ${anexo}${dec}
@@ -648,7 +817,7 @@ async function carregarMinhasJustificativas() {
                 <span class="st st-${it.status}">${it.status}</span>
             </div>`;
         }).join('');
-    } catch(e) { div.innerHTML = '<p style="color:#ef4444">Erro: ' + e.message + '</p>'; }
+    } catch(e) { div.innerHTML = '<p style="color:var(--erro)">Erro: ' + e.message + '</p>'; }
 }
 
 function escapeHtml(s) {
@@ -662,8 +831,8 @@ async function solicitarExtra(e) {
     try {
         const r = await fetch(API + '/hora-extra/solicitar', {method:'POST', headers:{'Content-Type':'application/json','X-Auth-Token':token}, body: JSON.stringify(obj)});
         const j = await r.json();
-        if (j.ok) { alert('⏰ Solicitação enviada! Aguarde aprovação do gestor.'); e.target.reset(); showTab('home'); }
-        else alert('❌ ' + (j.erro || 'erro'));
+        if (j.ok) { alert('Solicitação enviada! Aguarde aprovação do gestor.'); e.target.reset(); showTab('home'); }
+        else alert(j.erro || 'Erro ao enviar.');
     } catch(err) { alert('Erro: ' + err.message); }
 }
 </script>
