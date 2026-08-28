@@ -18,6 +18,7 @@ require_once __DIR__ . '/../includes/repp.php';
 require_once __DIR__ . '/../includes/crp.php';
 require_once __DIR__ . '/../includes/justificativas.php';
 require_once __DIR__ . '/../includes/ajuste_ponto.php';
+require_once __DIR__ . '/../includes/banco_horas.php';
 
 function api_route(): string {
     if (!empty($_GET['rota'])) {
@@ -112,6 +113,26 @@ try {
             $tiposValidos = ['entrada','saida_intervalo','retorno_intervalo','saida','extra_inicio','extra_fim'];
             if (!in_array($tipo, $tiposValidos)) json_response(['ok'=>false,'erro'=>'Tipo inválido'],400);
 
+            // Idempotência: o agente reenvia batidas que ficaram na fila offline
+            // com o mesmo client_uid. Se já foi gravada, devolve a mesma resposta
+            // em vez de duplicar o registro na cadeia REP-P.
+            $client_uid = substr(preg_replace('/[^A-Za-z0-9\-]/', '', (string)($in['client_uid'] ?? '')), 0, 40);
+            $client_uid = $client_uid !== '' ? $client_uid : null;
+            batidas_garantir_client_uid();
+            if ($client_uid) {
+                $st = db()->prepare("SELECT nsr, momento, sessao_id, hash_registro
+                                     FROM dot_batidas WHERE usuario_id=? AND client_uid=? LIMIT 1");
+                $st->execute([$u['id'], $client_uid]);
+                if ($ja = $st->fetch()) {
+                    json_response([
+                        'ok'=>true, 'duplicada'=>true,
+                        'nsr'=>(int)$ja['nsr'], 'sessao_id'=>(int)$ja['sessao_id'],
+                        'hash'=>$ja['hash_registro'], 'momento'=>$ja['momento'],
+                        'agora'=>date('Y-m-d H:i:s'),
+                    ]);
+                }
+            }
+
             // Origem e localização. Batidas pelo NAVEGADOR (origem 'web') exigem
             // geolocalização; o agent desktop (origem 'desktop') não exige.
             $origem_batida = (($in['origem'] ?? '') === 'web') ? 'web' : 'desktop';
@@ -182,13 +203,13 @@ try {
             $pdo->prepare("INSERT INTO dot_batidas
                 (nsr, sessao_id, empresa_id, usuario_id, tipo, momento, origem, ip_origem, hostname,
                  cpf_snapshot, pis_snapshot, hash_registro, hash_anterior, hash_alg, extemporanea,
-                 latitude, longitude, precisao_metros)
-                VALUES (?,?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, 'SHA-256', ?, ?, ?, ?)")
+                 latitude, longitude, precisao_metros, client_uid)
+                VALUES (?,?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, 'SHA-256', ?, ?, ?, ?, ?)")
                 ->execute([$nsr, $sessao_id, $u['empresa_id'], $u['id'], $tipo, $momento,
                            $origem_batida, $_SERVER['REMOTE_ADDR'] ?? null, $hostname,
                            $u['cpf'] ?? '', $u['pis'] ?? '',
                            $hash_atual, $hash_anterior, $extemporanea,
-                           $lat, $lng, $precisao]);
+                           $lat, $lng, $precisao, $client_uid]);
             $batida_id = (int)$pdo->lastInsertId();
 
             // Recalcula minutos trabalhados/intervalo da sessão a partir das
@@ -208,6 +229,10 @@ try {
                 'nsr'=>$nsr,
                 'sessao_id'=>$sessao_id,
                 'hash'=>$hash_atual,
+                // Momento REALMENTE gravado e hora do servidor: o agente ancora
+                // o cronômetro nestes valores, nunca no relógio da máquina.
+                'momento'=>$momento,
+                'agora'=>$agora->format('Y-m-d H:i:s'),
                 'crp_url' => $crp_result['url'] ?? null,
                 'crp_emitido' => !empty($crp_result['ok']),
                 'extemporanea' => (bool)$extemporanea,
@@ -281,19 +306,59 @@ try {
                 $stmt->execute([$sessao['id']]);
                 $batidas = $stmt->fetchAll();
             }
-            json_response(['ok'=>true,'sessao'=>$sessao,'batidas'=>$batidas]);
+            // 'agora' = relógio do servidor. O agente usa para calcular a
+            // diferença com o relógio local e manter o tempo trabalhado
+            // ancorado nas batidas, não no momento em que o app foi aberto.
+            json_response([
+                'ok'      => true,
+                'agora'   => date('Y-m-d H:i:s'),
+                'sessao'  => $sessao,
+                'batidas' => $batidas,
+            ]);
             break;
 
         case 'GET sessao/mes':
-            // Espelho do mês atual do funcionário
+            // Espelho do mês do funcionário, com saldo diário e resumo do banco
+            // de horas (mesma apuração do painel admin). Faltas/feriados também
+            // entram como dias, com status 'falta' / 'falta_abonada' / 'feriado'.
             $u = autenticar_token(bearer_token());
             if (!$u) json_response(['ok'=>false,'erro'=>'Token inválido'],401);
             $mes = $_GET['mes'] ?? date('Y-m');
             $inicio = $mes . '-01';
             $fim = date('Y-m-t', strtotime($inicio));
-            $stmt = db()->prepare("SELECT data_ref, minutos_trabalhados, minutos_intervalo, minutos_extras, minutos_ociosos, status FROM dot_sessoes WHERE usuario_id=? AND data_ref BETWEEN ? AND ? ORDER BY data_ref DESC");
+            $ap = bh_apurar((int)$u['id'], (int)$u['empresa_id'], $inicio, $fim);
+            $apd = [];
+            foreach ($ap['dias'] as $d) $apd[$d['data_ref']] = $d;
+            $stmt = db()->prepare("SELECT data_ref, minutos_trabalhados, minutos_intervalo, minutos_extras, minutos_ociosos, status FROM dot_sessoes WHERE usuario_id=? AND data_ref BETWEEN ? AND ?");
             $stmt->execute([$u['id'], $inicio, $fim]);
-            json_response(['ok'=>true, 'mes'=>$mes, 'dias'=>$stmt->fetchAll()]);
+            $dias = [];
+            foreach ($stmt->fetchAll() as $s) {
+                $d = $apd[$s['data_ref']] ?? null;
+                $s['carga']    = $d ? $d['carga'] : null;
+                $s['saldo']    = $d ? $d['saldo'] : null;
+                $s['situacao'] = $d ? $d['situacao'] : null;
+                $dias[$s['data_ref']] = $s;
+            }
+            foreach ($apd as $data => $d) {
+                if (isset($dias[$data])) continue; // dia sem sessão: falta/abonada/feriado
+                $dias[$data] = [
+                    'data_ref' => $data,
+                    'minutos_trabalhados' => $d['minutos_trabalhados'],
+                    'minutos_intervalo' => 0,
+                    'minutos_extras' => $d['minutos_extras'],
+                    'minutos_ociosos' => $d['minutos_ociosos'],
+                    'status' => $d['situacao'] === 'Feriado' ? 'feriado'
+                              : ($d['situacao'] === 'Falta abonada' ? 'falta_abonada' : 'falta'),
+                    'carga' => $d['carga'], 'saldo' => $d['saldo'], 'situacao' => $d['situacao'],
+                ];
+            }
+            krsort($dias); // mais recente primeiro (como o ORDER BY DESC anterior)
+            json_response(['ok'=>true, 'mes'=>$mes, 'dias'=>array_values($dias),
+                'resumo'=>[
+                    'minutos_a_favor'   => $ap['total_positivo'],
+                    'minutos_em_debito' => $ap['total_negativo'],
+                    'saldo_minutos'     => $ap['saldo_periodo'],
+                ]]);
             break;
 
         case 'POST justificativa':
@@ -372,7 +437,10 @@ try {
             $stmt->execute([$u['empresa_id']]);
             $cfg = [];
             foreach ($stmt->fetchAll() as $r) $cfg[$r['chave']] = $r['valor'];
-            json_response(['ok'=>true,'config'=>$cfg]);
+            // (object) força "{}" quando a empresa não tem nenhuma configuração.
+            // Sem isso o PHP serializa array vazio como "[]" e o agente quebra
+            // ao chamar .get() num objeto que virou lista.
+            json_response(['ok'=>true,'config'=>(object)$cfg]);
             break;
 
         case 'POST heartbeat':

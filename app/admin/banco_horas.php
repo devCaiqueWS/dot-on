@@ -1,10 +1,12 @@
 <?php
 $titulo = 'Banco de Horas'; $pagina = 'banco_horas';
 require __DIR__ . '/_layout.php';
-require_once __DIR__ . '/../includes/ajuste_ponto.php'; // jornada_listar() / jornada por dia
+require_once __DIR__ . '/../includes/banco_horas.php'; // apuração compartilhada (bh_apurar)
 
 $emp_id = $user['empresa_id'];
 $func = (int)($_GET['func'] ?? $user['id']);
+// Perfis comuns só veem o próprio banco de horas.
+if (!in_array($user['perfil'], ['admin','rh','gestor'])) { $func = (int)$user['id']; }
 $periodo_inicio = $_GET['inicio'] ?? date('Y-m-01', strtotime('-2 months'));
 $periodo_fim    = $_GET['fim']    ?? date('Y-m-t');
 
@@ -25,173 +27,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($user['perfil'], ['admin',
     $aviso_salvo = true;
 }
 
-$stmt = db()->prepare("SELECT u.* FROM dot_usuarios u WHERE u.id=? AND u.empresa_id=?");
-$stmt->execute([$func, $emp_id]);
-$f = $stmt->fetch();
+// Apuração compartilhada (mesma usada no Espelho de Ponto e no portal /me).
+// carry=true: o acumulado considera também o trecho entre a âncora e o início
+// do filtro — o "Saldo final" não muda quando se filtra um período menor.
+$ap = bh_apurar($func, $emp_id, $periodo_inicio, $periodo_fim, true, true);
+$f = $ap['funcionario'];
 if (!$f) { echo "<p>Funcionário não encontrado.</p></main></body></html>"; exit; }
 
-// Âncora efetiva do funcionário: a apuração NUNCA conta dias anteriores a ela.
-// $inicio_efetivo = o maior entre o filtro de tela e a âncora do funcionário.
-$data_inicio_banco = bh_data_inicio_banco($f);          // pode ser null (sem batidas e sem cadastro)
-$data_inicio_fonte = !empty($f['data_inicio_banco']) ? 'definida pelo RH'
-                   : ($data_inicio_banco ? 'primeira batida / cadastro' : '—');
-$saldo_inicial     = (int)($f['saldo_inicial_minutos'] ?? 0);
-$inicio_efetivo    = $data_inicio_banco ? max($periodo_inicio, $data_inicio_banco) : $periodo_inicio;
-
-// ================================================================
-// APURAÇÃO DO BANCO DE HORAS
-// A meta diária (carga) vem da JORNADA DO FUNCIONÁRIO por dia da
-// semana (dot_usuario_jornada), não de uma carga fixa. Regras:
-//   • Dia útil trabalhado ....... saldo = trabalhado − carga do dia
-//   • Falta em dia útil ......... saldo = −carga do dia (débito)
-//   • Folga trabalhada .......... carga 0 → tudo é crédito
-//   • Folga não trabalhada ...... não entra na conta
-// Varremos TODOS os dias do período (até hoje) para que faltas
-// gerem débito — a apuração antiga só via dias com batida.
-// ================================================================
-$jornada = jornada_listar($func); // [dia_semana 0..6 => linha]
-
-// Auto-recálculo: sessões podem ter minutos_trabalhados desatualizado (batidas
-// antigas que não recalcularam a sessão). Recalcula antes de apurar.
-$stmt = db()->prepare("SELECT id FROM dot_sessoes WHERE usuario_id=? AND data_ref BETWEEN ? AND ?");
-$stmt->execute([$func, $inicio_efetivo, $periodo_fim]);
-foreach ($stmt->fetchAll() as $row) {
-    try { jus_recalcular_sessao((int)$row['id']); } catch (Throwable $e) {}
-}
-
-// Sessões do período (já recalculadas), indexadas por data (Y-m-d)
-$stmt = db()->prepare("SELECT s.data_ref, s.minutos_trabalhados, s.minutos_ociosos, s.minutos_extras, s.status
-    FROM dot_sessoes s
-    WHERE s.usuario_id=? AND s.data_ref BETWEEN ? AND ?");
-$stmt->execute([$func, $inicio_efetivo, $periodo_fim]);
-$sessoes = [];
-foreach ($stmt->fetchAll() as $s) $sessoes[$s['data_ref']] = $s;
-
-// Abonos: justificativas de falta APROVADAS pelo gestor (a pessoa escreveu o
-// motivo e/ou anexou comprovação). Uma falta abonada não gera débito.
-jus_garantir_schema();
-$stmt = db()->prepare("SELECT id, data_ref, tipo, motivo, anexo_arquivo
-    FROM dot_justificativas
-    WHERE usuario_id=? AND empresa_id=? AND categoria='justificativa'
-      AND status='aprovada' AND data_ref BETWEEN ? AND ?
-    ORDER BY decidido_em ASC"); // último aprovado vence o slot do dia
-$stmt->execute([$func, $emp_id, $inicio_efetivo, $periodo_fim]);
-$abonos = [];
-foreach ($stmt->fetchAll() as $a) $abonos[$a['data_ref']] = $a; // 1 por dia basta
-
-$hoje = date('Y-m-d');
-$fim_efetivo = min($periodo_fim, $hoje); // não conta dias no futuro
-
-$dias = [];
-$saldo_acumulado = $saldo_inicial; // parte do saldo herdado (migração), não de zero
-$total_positivo = 0; $total_negativo = 0;
-
-$cur = new DateTime($inicio_efetivo);
-$lim = new DateTime($fim_efetivo);
-while ($cur <= $lim) {
-    $data = $cur->format('Y-m-d');
-    $dow  = (int)$cur->format('w');          // 0=domingo .. 6=sábado
-    $cur->modify('+1 day');
-
-    $jd       = $jornada[$dow] ?? null;
-    $trabalha = $jd ? (int)$jd['trabalha'] : ($dow >= 1 && $dow <= 5 ? 1 : 0);
-    $carga    = $trabalha ? (int)($jd['carga_minutos'] ?: 480) : 0;
-
-    $sess       = $sessoes[$data] ?? null;
-    $trabalhado = $sess ? (int)$sess['minutos_trabalhados'] : 0;
-
-    // Dia de hoje: só apura depois que a pessoa registrar a saída (sessão
-    // encerrada). Enquanto está em curso, não penaliza nem conta como falta.
-    if ($data === $hoje && (!$sess || ($sess['status'] ?? '') !== 'encerrada')) continue;
-    // Folga não trabalhada: não polui o relatório.
-    if ($carga === 0 && $trabalhado === 0) continue;
-
-    $abono = $abonos[$data] ?? null;
-
-    if (!$sess && $carga > 0) {
-        // Falta: abonada (justificativa aprovada) não gera débito.
-        // Feriado é um abono especial: o dia é neutro e aparece como "Feriado".
-        if ($abono) {
-            $situacao = ($abono['tipo'] === 'feriado') ? 'Feriado' : 'Falta abonada';
-        } else {
-            $situacao = 'Falta';
-        }
-    } elseif ($carga === 0 && $trabalhado) {
-        $situacao = 'Folga trab.';
-    } else {
-        $situacao = 'Normal';
-    }
-
-    // Saldo do dia. Falta abonada zera o débito (dia neutro).
-    if (!$sess && $carga > 0 && $abono) {
-        $saldo = 0;
-    } else {
-        $saldo = $trabalhado - $carga;
-    }
-    $saldo_acumulado += $saldo;
-    if ($saldo > 0) $total_positivo += $saldo; else $total_negativo += $saldo;
-
-    $dias[] = [
-        'data_ref'            => $data,
-        'carga'               => $carga,
-        'minutos_trabalhados' => $trabalhado,
-        'minutos_ociosos'     => $sess ? (int)$sess['minutos_ociosos'] : 0,
-        'minutos_extras'      => $sess ? (int)$sess['minutos_extras'] : 0,
-        'situacao'            => $situacao,
-        'abono'              => $abono,
-        'saldo'               => $saldo,
-        'saldo_acumulado'     => $saldo_acumulado,
-    ];
-}
+$data_inicio_banco = $ap['data_inicio_banco'];
+$data_inicio_fonte = $ap['data_inicio_fonte'];
+$saldo_inicial     = $ap['saldo_inicial'];
+$saldo_anterior    = $ap['saldo_anterior'];
+$inicio_efetivo    = $ap['inicio_efetivo'];
+$dias              = $ap['dias'];
+$total_positivo    = $ap['total_positivo'];
+$total_negativo    = $ap['total_negativo'];
+$saldo_acumulado   = $ap['saldo_acumulado'];
 
 $stmt = db()->prepare("SELECT id, nome_completo FROM dot_usuarios WHERE empresa_id=? AND ativo=1 ORDER BY nome_completo");
 $stmt->execute([$user['empresa_id']]);
 $funcs = $stmt->fetchAll();
-
-/** Auto-migração idempotente: colunas de âncora do banco de horas em dot_usuarios. */
-function bh_garantir_schema(): void {
-    static $ok = false; if ($ok) return;
-    $tem = db()->query("SELECT COUNT(*) FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='dot_usuarios'
-          AND COLUMN_NAME='data_inicio_banco'")->fetchColumn();
-    if (!$tem) {
-        db()->exec("ALTER TABLE dot_usuarios
-            ADD COLUMN data_inicio_banco DATE NULL,
-            ADD COLUMN saldo_inicial_minutos INT NOT NULL DEFAULT 0");
-    }
-    $ok = true;
-}
-
-/**
- * Data-âncora do banco de horas: a apuração nunca conta dias anteriores a ela.
- * Prioridade: data_inicio_banco (definida pelo RH) → 1ª batida (menor data_ref
- * com sessão) → data de cadastro. É explícita e estável: ao contrário de
- * "recalcular sempre pela batida mais antiga", não se desloca se alguém corrigir
- * ou apagar a batida mais antiga — o cálculo do saldo continua determinístico.
- */
-function bh_data_inicio_banco(array $f): ?string {
-    if (!empty($f['data_inicio_banco'])) return (string)$f['data_inicio_banco'];
-    $st = db()->prepare("SELECT MIN(data_ref) FROM dot_sessoes WHERE usuario_id=?");
-    $st->execute([$f['id']]);
-    $primeira = $st->fetchColumn();
-    if ($primeira) return (string)$primeira;
-    return !empty($f['criado_em']) ? substr((string)$f['criado_em'], 0, 10) : null;
-}
-
-/** Converte "±HH:MM" (ou minutos avulsos) em minutos inteiros com sinal. */
-function bh_parse_hhmm(string $txt): int {
-    $txt = trim($txt);
-    if ($txt === '') return 0;
-    $neg = strncmp($txt, '-', 1) === 0;
-    $txt = ltrim($txt, '+-');
-    if (strpos($txt, ':') !== false) {
-        [$h, $m] = array_pad(explode(':', $txt, 2), 2, '0');
-        $min = ((int)$h) * 60 + (int)$m;
-    } else {
-        $min = (int)$txt;
-    }
-    return $neg ? -$min : $min;
-}
 ?>
 <form method="get" class="form-inline">
     <label>Funcionário
@@ -240,6 +95,9 @@ function bh_parse_hhmm(string $txt): int {
 <div class="cards">
     <?php if ($saldo_inicial): ?>
     <div class="card"><div class="num" style="color:<?= $saldo_inicial>=0?'#16a34a':'#dc2626' ?>"><?= fmt_minutos($saldo_inicial) ?></div><div class="lbl">Saldo inicial herdado</div></div>
+    <?php endif; ?>
+    <?php if ($saldo_anterior): ?>
+    <div class="card"><div class="num" style="color:<?= $saldo_anterior>=0?'#16a34a':'#dc2626' ?>"><?= fmt_minutos($saldo_anterior) ?></div><div class="lbl">Saldo antes do período</div></div>
     <?php endif; ?>
     <div class="card"><div class="num" style="color:#16a34a"><?= fmt_minutos($total_positivo) ?></div><div class="lbl">Horas a favor</div></div>
     <div class="card"><div class="num" style="color:#dc2626"><?= fmt_minutos($total_negativo) ?></div><div class="lbl">Horas em débito</div></div>

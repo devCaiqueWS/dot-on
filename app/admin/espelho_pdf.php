@@ -6,10 +6,18 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/justificativas.php';
+require_once __DIR__ . '/../includes/banco_horas.php';
 $user = requer_login();
 batidas_garantir_cancelamento();
 
+// Restringe à empresa do usuário logado (mesma regra do espelho.php).
+// Perfis comuns só baixam o próprio espelho (o PDF expõe CPF/PIS).
 $func = (int)($_GET['func'] ?? $user['id']);
+if (!in_array($user['perfil'], ['admin','rh','gestor'])) { $func = (int)$user['id']; }
+$st = db()->prepare("SELECT id FROM dot_usuarios WHERE id=? AND empresa_id=?");
+$st->execute([$func, $user['empresa_id']]);
+if (!$st->fetch()) { $func = (int)$user['id']; }
+
 $mes = $_GET['mes'] ?? date('Y-m');
 [$ano, $m] = explode('-', $mes);
 $inicio = "$ano-$m-01";
@@ -20,10 +28,14 @@ $stmt = db()->prepare("SELECT u.*, e.nome AS escala_nome, e.entrada, e.intervalo
     FROM dot_usuarios u
     LEFT JOIN dot_escalas e ON e.id=u.escala_id
     LEFT JOIN dot_empresas emp ON emp.id=u.empresa_id
-    WHERE u.id=?");
-$stmt->execute([$func]);
+    WHERE u.id=? AND u.empresa_id=?");
+$stmt->execute([$func, $user['empresa_id']]);
 $f = $stmt->fetch();
 if (!$f) die('Funcionário não encontrado.');
+
+// Horas a favor / em débito do mês — mesma apuração do Banco de Horas.
+// Roda antes da consulta de sessões porque também recalcula os minutos.
+$ap = bh_apurar($func, (int)$user['empresa_id'], $inicio, $fim);
 
 $stmt = db()->prepare("SELECT * FROM dot_sessoes WHERE usuario_id=? AND data_ref BETWEEN ? AND ? ORDER BY data_ref");
 $stmt->execute([$func, $inicio, $fim]);
@@ -37,6 +49,13 @@ foreach ($stmt->fetchAll() as $b) $batidas_por_dia[substr($b['momento'],0,10)][]
 $total_trab = array_sum(array_column($sessoes, 'minutos_trabalhados'));
 $total_extra = array_sum(array_column($sessoes, 'minutos_extras'));
 $total_ocioso = array_sum(array_column($sessoes, 'minutos_ociosos'));
+
+// Mescla sessões com a apuração: faltas, faltas abonadas e feriados também
+// entram no espelho impresso (dia sem batida deixa de sumir do documento).
+$linhas = [];
+foreach ($sessoes as $s) $linhas[$s['data_ref']]['sessao'] = $s;
+foreach ($ap['dias'] as $d) $linhas[$d['data_ref']]['ap'] = $d;
+ksort($linhas);
 ?>
 <!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><title>Espelho de Ponto - <?= htmlspecialchars($f['nome_completo']) ?></title>
@@ -86,24 +105,31 @@ tr:nth-child(even){background:#f9fafb}
     <div><strong><?= fmt_minutos($total_trab) ?></strong>Total trabalhado</div>
     <div><strong><?= fmt_minutos($total_extra) ?></strong>Horas extras</div>
     <div><strong><?= fmt_minutos($total_ocioso) ?></strong>Ociosidade</div>
+    <div><strong style="color:#15803d"><?= fmt_minutos($ap['total_positivo']) ?></strong>Horas a favor</div>
+    <div><strong style="color:#b91c1c"><?= fmt_minutos($ap['total_negativo']) ?></strong>Horas em débito</div>
+    <div><strong style="color:<?= $ap['saldo_periodo']>=0?'#15803d':'#b91c1c' ?>"><?= fmt_minutos($ap['saldo_periodo']) ?></strong>Saldo do mês</div>
     <div><strong><?= count($sessoes) ?></strong>Dias com registro</div>
 </div>
 
 <table>
     <thead><tr>
         <th>Data</th><th>Dia</th><th>Entrada</th><th>Saída Int.</th><th>Retorno</th><th>Saída</th>
-        <th>Trab.</th><th>Ocioso</th><th>Extra</th>
+        <th>Trab.</th><th>Ocioso</th><th>Extra</th><th>Saldo</th>
     </tr></thead>
     <tbody>
     <?php
-    $dias = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-    foreach ($sessoes as $s):
-        $b = $batidas_por_dia[$s['data_ref']] ?? [];
-        $busca = fn($t) => current(array_filter($b, fn($x) => $x['tipo'] === $t));
-        $dia_semana = $dias[date('w', strtotime($s['data_ref']))];
+    $dias_semana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    foreach ($linhas as $data_ref => $ln):
+        $s  = $ln['sessao'] ?? null;
+        $sd = $ln['ap'] ?? null;
+        $dia_semana = $dias_semana[date('w', strtotime($data_ref))];
     ?>
+        <?php if ($s):
+            $b = $batidas_por_dia[$data_ref] ?? [];
+            $busca = fn($t) => current(array_filter($b, fn($x) => $x['tipo'] === $t));
+        ?>
         <tr>
-            <td><?= date('d/m/Y', strtotime($s['data_ref'])) ?></td>
+            <td><?= date('d/m/Y', strtotime($data_ref)) ?></td>
             <td><?= $dia_semana ?></td>
             <td><?= ($r=$busca('entrada')) ? date('H:i', strtotime($r['momento'])) : '—' ?></td>
             <td><?= ($r=$busca('saida_intervalo')) ? date('H:i', strtotime($r['momento'])) : '—' ?></td>
@@ -112,9 +138,21 @@ tr:nth-child(even){background:#f9fafb}
             <td><?= fmt_minutos($s['minutos_trabalhados']) ?></td>
             <td><?= fmt_minutos($s['minutos_ociosos']) ?></td>
             <td><?= fmt_minutos($s['minutos_extras']) ?></td>
+            <td style="color:<?= $sd && $sd['saldo']<0 ? '#b91c1c' : '#15803d' ?>"><?= $sd ? fmt_minutos($sd['saldo']) : '—' ?></td>
         </tr>
-    <?php endforeach; if(!$sessoes): ?>
-        <tr><td colspan="9">Sem registros no período</td></tr>
+        <?php else: // falta, falta abonada ou feriado ?>
+        <tr>
+            <td><?= date('d/m/Y', strtotime($data_ref)) ?></td>
+            <td><?= $dia_semana ?></td>
+            <td colspan="4" style="color:#666"><?= htmlspecialchars($sd['situacao']) ?><?= !empty($sd['abono']) ? ' · ' . htmlspecialchars(jus_label_tipo($sd['abono']['tipo'])) : '' ?></td>
+            <td><?= fmt_minutos($sd['minutos_trabalhados']) ?></td>
+            <td>—</td>
+            <td>—</td>
+            <td style="color:<?= $sd['saldo']<0 ? '#b91c1c' : '#15803d' ?>"><?= fmt_minutos($sd['saldo']) ?></td>
+        </tr>
+        <?php endif; ?>
+    <?php endforeach; if(!$linhas): ?>
+        <tr><td colspan="10">Sem registros no período</td></tr>
     <?php endif; ?>
     </tbody>
 </table>
