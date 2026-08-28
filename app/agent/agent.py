@@ -17,13 +17,13 @@ Configuracao:
  - Na ausencia do .ini, usa-se config.json (gerado na primeira execucao).
 """
 
-import sys, os, json, time, socket, threading, ctypes, configparser, subprocess, hashlib, re
+import sys, os, json, time, socket, threading, ctypes, configparser, subprocess, hashlib, re, uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
 # Versao do agent. Comparada com o manifesto do servidor (GET /agent/versao)
 # para decidir se ha atualizacao disponivel. Incremente a cada build publicado.
-AGENT_VERSION = "1.1.0"
+AGENT_VERSION = "1.1.1"
 
 import requests
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
@@ -57,7 +57,9 @@ APP_DIR = DATA_DIR  # compatibilidade
 CONFIG_FILE = DATA_DIR / 'config.json'
 TOKEN_FILE = DATA_DIR / '.token'
 LOG_FILE = DATA_DIR / 'agent.log'
+FILA_FILE = DATA_DIR / 'batidas_pendentes.json'  # batidas feitas sem internet
 INI_FILE = EXE_DIR / 'dot-on.ini'  # entregue pelo instalador ao lado do .exe
+LOG_MAX_BYTES = 2 * 1024 * 1024
 
 # Migracao suave: se havia um .token antigo ao lado do .exe (versoes anteriores),
 # reaproveita uma unica vez para nao forçar novo login apos a atualizacao.
@@ -76,12 +78,29 @@ def recurso(nome):
 # URL padrao de producao. O instalador da empresa sobrescreve via dot-on.ini.
 DEFAULT_API_URL = "https://dot-on.com.br/app/api/"
 
+_log_escritas = 0
+
+def _rotacionar_log():
+    """Mantem no maximo um agent.log + um agent.log.old (o agente roda por dias)."""
+    try:
+        if LOG_FILE.exists() and LOG_FILE.stat().st_size > LOG_MAX_BYTES:
+            velho = LOG_FILE.with_name('agent.log.old')
+            if velho.exists():
+                velho.unlink()
+            LOG_FILE.rename(velho)
+    except Exception:
+        pass
+
 def log(msg):
+    global _log_escritas
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
     print(line)
     try:
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
+        _log_escritas += 1
+        if _log_escritas % 200 == 0:
+            _rotacionar_log()
     except Exception:
         pass
 
@@ -114,6 +133,7 @@ def load_config():
     cfg.setdefault('ociosidade_segundos', 300)
     cfg.setdefault('verificar_intervalo_segundos', 30)
     cfg.setdefault('heartbeat_segundos', 60)
+    cfg.setdefault('sincronizar_sessao_segundos', 60)  # re-le as batidas na API
     # dot-on.ini (instalador) tem prioridade sobre o config.json
     ini = load_ini()
     if ini.get('api_url'):
@@ -127,6 +147,39 @@ def load_config():
     return cfg
 
 CFG = load_config()
+
+# ------------------------------------------------------------------
+# FILA DE BATIDAS OFFLINE
+# ------------------------------------------------------------------
+# Queda de internet nao pode custar a batida do funcionario. Quando o POST
+# falha por rede, a batida (com o momento em que foi feita e um uid unico)
+# fica em disco e e reenviada nos ciclos seguintes. O uid torna o reenvio
+# idempotente no servidor; o proprio servidor marca como extemporanea.
+_fila_lock = threading.Lock()
+
+def fila_ler():
+    try:
+        dados = json.loads(FILA_FILE.read_text(encoding='utf-8'))
+        return dados if isinstance(dados, list) else []
+    except Exception:
+        return []
+
+def fila_gravar(itens):
+    try:
+        if itens:
+            FILA_FILE.write_text(json.dumps(itens, indent=2), encoding='utf-8')
+        elif FILA_FILE.exists():
+            FILA_FILE.unlink()
+    except Exception as e:
+        log(f"Fila: falha ao gravar: {e}")
+
+def fila_add(batida):
+    with _fila_lock:
+        itens = fila_ler()
+        itens.append(batida)
+        fila_gravar(itens)
+    log(f"Fila: batida '{batida.get('tipo')}' de {batida.get('momento')} guardada para reenvio.")
+    return len(itens)
 
 # ------------------------------------------------------------------
 # PALETA / TEMA
@@ -215,6 +268,10 @@ class APIClient:
         self.token = None
         self.user = None
         self.precisa_trocar_senha = 0
+        # Diferenca (segundos) entre o relogio do servidor e o desta maquina.
+        # Toda conta de ponto usa agora(), entao um relogio local errado (ou em
+        # outro fuso) nao desloca o tempo trabalhado.
+        self.delta_relogio = 0.0
         if TOKEN_FILE.exists():
             try:
                 data = json.loads(TOKEN_FILE.read_text())
@@ -226,6 +283,24 @@ class APIClient:
         h = {'Content-Type': 'application/json'}
         if self.token: h['X-Auth-Token'] = self.token
         return h
+
+    # ---- Relogio do servidor ----
+    def agora(self):
+        """Hora atual na referencia do servidor (relogio local + delta)."""
+        return datetime.now() + timedelta(seconds=self.delta_relogio)
+
+    def _sincronizar_relogio(self, agora_srv):
+        """Recalcula o delta a partir do campo 'agora' devolvido pela API."""
+        if not agora_srv:
+            return
+        try:
+            ts = datetime.strptime(str(agora_srv), '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return
+        delta = (ts - datetime.now()).total_seconds()
+        if abs(delta - self.delta_relogio) > 2:
+            log(f"Relogio ajustado pelo servidor: delta={delta:+.0f}s")
+        self.delta_relogio = delta
 
     def login(self, email, senha):
         try:
@@ -256,14 +331,24 @@ class APIClient:
         self.token = None; self.user = None; self.precisa_trocar_senha = 0
         if TOKEN_FILE.exists(): TOKEN_FILE.unlink()
 
-    def batida(self, tipo, momento=None):
-        momento = momento or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    def batida(self, tipo, momento=None, client_uid=None):
+        """Registra uma batida. Em falha de rede devolve offline=True e o payload,
+        para quem chamou guardar na fila e reenviar depois com o mesmo uid."""
+        payload = {
+            'tipo': tipo,
+            'momento': momento or self.agora().strftime('%Y-%m-%d %H:%M:%S'),
+            'hostname': socket.gethostname(),
+            'client_uid': client_uid or uuid.uuid4().hex,
+        }
         try:
             r = requests.post(f"{self.base}/batida", headers=self._headers(),
-                json={'tipo': tipo, 'momento': momento, 'hostname': socket.gethostname()}, timeout=15)
-            return r.json()
+                              json=payload, timeout=15)
+            j = r.json()
+            self._sincronizar_relogio(j.get('agora'))
+            return j
         except Exception as e:
-            log(f"Erro batida: {e}"); return {'ok': False, 'erro': str(e)}
+            log(f"Erro batida (sem conexao): {e}")
+            return {'ok': False, 'offline': True, 'erro': str(e), 'batida': payload}
 
     def ociosidade(self, inicio, fim, motivo=''):
         try:
@@ -290,22 +375,27 @@ class APIClient:
 
     def escala(self):
         try:
-            r = requests.get(f"{self.base}/escala", headers=self._headers(), timeout=10)
-            return r.json().get('escala')
+            esc = requests.get(f"{self.base}/escala", headers=self._headers(), timeout=10).json().get('escala')
+            return esc if isinstance(esc, dict) else None
         except Exception:
             return None
 
     def config(self):
+        """Parametros da empresa. Sempre um dict: empresa sem nenhuma configuracao
+        faz o PHP devolver [] (lista), e qualquer .get() depois quebraria o loop."""
         try:
-            r = requests.get(f"{self.base}/config", headers=self._headers(), timeout=10)
-            return r.json().get('config', {})
+            cfg = requests.get(f"{self.base}/config", headers=self._headers(), timeout=10).json().get('config')
+            return cfg if isinstance(cfg, dict) else {}
         except Exception:
             return {}
 
     def sessao_atual(self):
+        """Sessao do dia + batidas (fonte da verdade do tempo trabalhado)."""
         try:
             r = requests.get(f"{self.base}/sessao/atual", headers=self._headers(), timeout=10)
-            return r.json()
+            j = r.json()
+            self._sincronizar_relogio(j.get('agora'))
+            return j
         except Exception:
             return {'ok': False}
 
@@ -566,12 +656,14 @@ class MainWindow(QMainWindow):
     # Sinal emitido de uma thread de rede -> tratado na thread da UI (conexao em fila).
     batida_pronta = pyqtSignal(str, object, str)  # tipo, resultado, mensagem_sucesso
     atualizacao_disp = pyqtSignal(object)         # manifesto de nova versao
+    sessao_pronta = pyqtSignal(object)            # resposta de GET /sessao/atual
+    extra_status = pyqtSignal(object)             # resposta de GET /hora-extra/status
 
     def __init__(self, api: APIClient):
         super().__init__()
         self.api = api
         self.escala = api.escala() or {}
-        self.config_srv = api.config()
+        self.config_srv = api.config() or {}
         self.estado = 'fora'   # fora | trabalhando | intervalo | bloqueado
         self.ocioso_desde = None
         # Tempo trabalhado ancorado nas batidas do servidor (NAO no tempo de app aberto):
@@ -586,7 +678,11 @@ class MainWindow(QMainWindow):
         self.minutos_extra_solicitados = 0
         self.minutos_extra_aprovados = 0
         self.id_extra_pendente = None
+        self._consultando_extra = False     # ha consulta de hora extra em voo?
+        self._ultimo_lembrete_int = None    # HH:MM do ultimo lembrete de intervalo
         self.ocupado = False                # ha uma batida em andamento?
+        self._pendentes = len(fila_ler())   # batidas offline aguardando envio
+        self._ultimo_heartbeat = 0.0        # time.monotonic() do ultimo heartbeat
         self._encerrando = False            # saida disparada pelo fim de expediente?
         self._pulso_on = False              # estado do piscar do botao extra
         self._banner_timer = None
@@ -595,8 +691,12 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self.batida_pronta.connect(self._on_batida_pronta)
         self.atualizacao_disp.connect(self._on_atualizacao_disp)
+        self.sessao_pronta.connect(self._on_sessao_pronta)
+        self.extra_status.connect(self._on_extra_status)
         self._restaurar_sessao()
         self._iniciar_timers()
+        # Primeiro ciclo logo apos abrir: reenvia a fila offline sem travar o boot.
+        QTimer.singleShot(2000, self._safe(self._sincronizar_sessao_async))
         # Checa atualizacao alguns segundos apos abrir (nao trava o boot).
         QTimer.singleShot(4000, self._checar_update_async)
 
@@ -730,6 +830,12 @@ class MainWindow(QMainWindow):
             self.lbl_jornada.setText("Sem escala configurada")
             self.lbl_almoco.setText("")
             return
+        if not self._trabalha_hoje():
+            # Folga: sem jornada prevista (e sem encerramento automatico).
+            self.lbl_jornada.setText(
+                f"<span style='color:{COR['texto_fraco']}'>Hoje</span><br>"
+                f"<b style='font-size:14px;color:{COR['primaria']}'>Folga</b>")
+            return
         ent = _hm(self.escala.get('entrada'))
         sai = _hm(self.escala.get('saida'))
         self.lbl_jornada.setText(
@@ -738,10 +844,102 @@ class MainWindow(QMainWindow):
 
     # ---------------- SESSAO ----------------
     def _restaurar_sessao(self):
-        s = self.api.sessao_atual()
-        if s.get('ok') and s.get('sessao'):
-            self._aplicar_batidas(s.get('batidas') or [])
-            log(f"Sessao restaurada: estado={self.estado}, "
+        """Carga inicial: le a sessao do dia na API antes de mostrar qualquer hora.
+        A fila offline entra no calculo aqui e e reenviada no 1o ciclo assincrono
+        (reenviar agora travaria a janela por 15s por batida se a rede estiver fora)."""
+        self._on_sessao_pronta({'sessao': self.api.sessao_atual()}, inicial=True)
+
+    def _sincronizar_sessao_async(self):
+        """Re-le sessao, escala e config na API (em thread, para nao travar a UI).
+
+        Roda periodicamente: assim o agente segue a fonte da verdade do servidor
+        — inclusive batidas feitas pelo painel web e mudancas de escala — em vez
+        de confiar no que ficou em memoria desde que a janela foi aberta."""
+        if self.ocupado:
+            return
+        def work():
+            recusadas = self._enviar_pendentes()
+            self.sessao_pronta.emit({
+                'recusadas': recusadas,
+                'sessao': self.api.sessao_atual(),
+                'escala': self.api.escala(),
+                'config': self.api.config(),
+            })
+        threading.Thread(target=work, daemon=True).start()
+
+    def _enviar_pendentes(self):
+        """Reenvia as batidas guardadas offline (roda na thread de sincronizacao).
+
+        Retorna a lista de batidas RECUSADAS pelo servidor, para avisar o
+        funcionario. O client_uid garante que uma batida que chegou ao servidor
+        mas cuja resposta se perdeu nao vire duplicata."""
+        recusadas = []
+        with _fila_lock:
+            fila = fila_ler()
+            if not fila:
+                return recusadas
+            restantes = []
+            for item in fila:
+                r = self.api.batida(item.get('tipo'), item.get('momento'), item.get('client_uid'))
+                if r.get('ok'):
+                    ja = ' (ja registrada)' if r.get('duplicada') else ''
+                    log(f"Fila: '{item.get('tipo')}' de {item.get('momento')} enviada{ja}.")
+                elif r.get('offline'):
+                    restantes.append(item)      # ainda sem rede: tenta no proximo ciclo
+                else:
+                    # Recusa do servidor (regra de negocio): nao adianta insistir.
+                    log(f"Fila: '{item.get('tipo')}' de {item.get('momento')} recusada: {r.get('erro')}")
+                    recusadas.append(f"{item.get('tipo')} de "
+                                     f"{str(item.get('momento'))[11:16]} ({r.get('erro')})")
+            fila_gravar(restantes)
+        return recusadas
+
+    def _on_sessao_pronta(self, dados, inicial=False):
+        """Tratado na thread da UI: aplica o que veio da API."""
+        # Escala e parametros da empresa tambem vem do servidor a cada ciclo.
+        esc = dados.get('escala')
+        if esc and esc != self.escala:
+            self.escala = esc
+            self._preencher_jornada()
+            log("Escala atualizada pelo servidor.")
+        cfg = dados.get('config')
+        if isinstance(cfg, dict) and cfg:
+            self.config_srv = cfg
+
+        # Batida da fila que o servidor recusou: o funcionario precisa saber
+        # (vai ter que registrar de novo ou pedir ajuste ao gestor).
+        recusadas = dados.get('recusadas') or []
+        if recusadas:
+            msg = "O servidor recusou: " + "; ".join(recusadas[:3])
+            self._banner(msg + ". Fale com seu gestor.", 'erro')
+            self._notificar(msg)
+
+        s = dados.get('sessao') or {}
+        if not s.get('ok'):
+            if inicial:
+                log("Sessao nao carregada (API indisponivel); aguardando sincronizacao.")
+            return
+        if self.ocupado:
+            return  # ha batida em voo; o proximo ciclo sincroniza
+        estado_ant = self.estado
+        # Batidas do servidor + as que ainda estao na fila offline: para o
+        # funcionario elas ja aconteceram, entao entram no calculo na ordem certa.
+        # So as batidas DE HOJE entram na conta: uma entrada de ontem presa na
+        # fila abriria um segmento de 24h+ no cronometro de hoje.
+        batidas = list(s.get('batidas') or [])
+        pendentes = [b for b in fila_ler() if b.get('tipo') and b.get('momento')]
+        self._pendentes = len(pendentes)
+        hoje = self.api.agora().strftime('%Y-%m-%d')
+        pendentes_hoje = [b for b in pendentes if str(b.get('momento', '')).startswith(hoje)]
+        if pendentes_hoje:
+            batidas = sorted(batidas + pendentes_hoje, key=lambda b: b.get('momento') or '')
+        self._aplicar_batidas(batidas)
+        # 'bloqueado' (fim de expediente) e um estado so do cliente: o servidor
+        # devolve 'fora' apos a saida. Preserva para nao destravar sozinho.
+        if estado_ant == 'bloqueado' and self.estado == 'fora':
+            self.estado = 'bloqueado'
+        if inicial or estado_ant != self.estado:
+            log(f"Sessao sincronizada: estado={self.estado}, "
                 f"trab={int(self._segundos_trabalhados())//60}min, intervalo={self.minutos_intervalo_prev}min")
         self._atualizar_botoes()
 
@@ -799,6 +997,9 @@ class MainWindow(QMainWindow):
         self.timer_cron.start(1000)
         self.timer_check = QTimer(self); self.timer_check.timeout.connect(self._safe(self._check_estado))
         self.timer_check.start(int(CFG.get('verificar_intervalo_segundos', 30)) * 1000)
+        # Re-sincroniza estado/tempo com a API (fonte da verdade das batidas).
+        self.timer_sync = QTimer(self); self.timer_sync.timeout.connect(self._safe(self._sincronizar_sessao_async))
+        self.timer_sync.start(max(15, int(CFG.get('sincronizar_sessao_segundos', 60))) * 1000)
         # Piscar do botao de hora extra
         self.timer_pulso = QTimer(self); self.timer_pulso.timeout.connect(self._safe(self._pulsar_extra))
         self.timer_pulso.start(600)
@@ -809,18 +1010,37 @@ class MainWindow(QMainWindow):
         if self.ocupado:
             return
         self._set_ocupado(True)
+        # Fecha um periodo de ociosidade em aberto ANTES de mudar de estado:
+        # senao ele se perde quando o funcionario sai ou entra em intervalo.
+        ocioso = self.ocioso_desde
+        self.ocioso_desde = None
         def work():
+            if ocioso:
+                fim = self.api.agora()
+                self.api.ociosidade(ocioso.strftime('%Y-%m-%d %H:%M:%S'),
+                                    fim.strftime('%Y-%m-%d %H:%M:%S'), 'inatividade')
             r = self.api.batida(tipo)
+            if r.get('offline') and r.get('batida'):
+                fila_add(r['batida'])   # sem rede: guarda e reenvia depois
             self.batida_pronta.emit(tipo, r, msg_sucesso)
         threading.Thread(target=work, daemon=True).start()
 
     def _on_batida_pronta(self, tipo, r, msg_sucesso):
         """Tratado na thread da UI: aplica o novo estado apos a resposta do servidor."""
         self._set_ocupado(False)
-        if not r or not r.get('ok'):
+        offline = bool(r and r.get('offline'))
+        if not r or not (r.get('ok') or offline):
             self._banner(r.get('erro', 'Falha ao registrar a batida.') if r else 'Falha de conexao.', 'erro')
             return
-        agora = datetime.now()
+        # Ancora no momento que o servidor REALMENTE gravou (ele pode corrigir o
+        # que enviamos). Offline, vale o momento guardado na fila.
+        agora = self.api.agora()
+        try:
+            momento = r.get('momento') or (r.get('batida') or {}).get('momento')
+            if momento:
+                agora = datetime.strptime(momento, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            pass
         if tipo == 'entrada':
             self.estado = 'trabalhando'
             self._trab_seg_inicio = agora
@@ -848,6 +1068,12 @@ class MainWindow(QMainWindow):
                 self.minutos_intervalo_prev += int(round(usados))
                 self.intervalo_inicio = None
         self._atualizar_botoes()
+        if offline:
+            self._pendentes = len(fila_ler())
+            self._banner(f"{msg_sucesso} (sem conexao — sera enviada ao servidor "
+                         f"assim que a internet voltar).", 'alerta')
+            self._notificar(f"{msg_sucesso} — pendente de envio ao servidor.")
+            return
         nsr = r.get('nsr')
         sufixo = f"  ·  NSR {nsr:09d}" if isinstance(nsr, int) else ""
         self._banner(msg_sucesso + sufixo, 'sucesso')
@@ -963,8 +1189,8 @@ class MainWindow(QMainWindow):
         Ancorado nas batidas, entao independe de o app ter sido fechado/reaberto."""
         base = self._trab_base_seg
         if self.estado == 'trabalhando' and self._trab_seg_inicio:
-            base += (datetime.now() - self._trab_seg_inicio).total_seconds()
-        return base
+            base += (self.api.agora() - self._trab_seg_inicio).total_seconds()
+        return max(0.0, base)
 
     # ---------------- LOOP DE VERIFICACAO ----------------
     def _check_estado(self):
@@ -974,53 +1200,97 @@ class MainWindow(QMainWindow):
             limite = int(self.config_srv.get('ociosidade_segundos_limite') or CFG.get('ociosidade_segundos', 300))
             if idle > limite:
                 if not self.ocioso_desde:
-                    self.ocioso_desde = datetime.now() - timedelta(seconds=idle)
+                    self.ocioso_desde = self.api.agora() - timedelta(seconds=idle)
                     log(f"Ociosidade iniciada as {self.ocioso_desde}")
             else:
                 if self.ocioso_desde:
-                    fim = datetime.now()
-                    self.api.ociosidade(
-                        self.ocioso_desde.strftime('%Y-%m-%d %H:%M:%S'),
-                        fim.strftime('%Y-%m-%d %H:%M:%S'),
-                        'inatividade'
-                    )
-                    log(f"Ociosidade reportada: {(fim - self.ocioso_desde).seconds}s")
+                    inicio, fim = self.ocioso_desde, self.api.agora()
                     self.ocioso_desde = None
+                    log(f"Ociosidade reportada: {int((fim - inicio).total_seconds())}s")
+                    self._em_thread(lambda: self.api.ociosidade(
+                        inicio.strftime('%Y-%m-%d %H:%M:%S'),
+                        fim.strftime('%Y-%m-%d %H:%M:%S'), 'inatividade'))
 
         # 2) Hora do intervalo (lembrete)
         if self.estado == 'trabalhando' and self.escala:
-            agora = datetime.now().strftime('%H:%M')
+            agora = self.api.agora().strftime('%H:%M')
             inicio_int = (self.escala.get('intervalo_inicio') or '')[:5]
-            if inicio_int and agora == inicio_int:
+            if inicio_int and agora == inicio_int and self._ultimo_lembrete_int != agora:
+                self._ultimo_lembrete_int = agora   # evita repetir no tick seguinte
                 self._notificar("Esta na hora do seu intervalo de almoco!")
 
-        # 3) Fim de expediente
-        if self.estado == 'trabalhando' and self.escala:
-            agora_t = datetime.now().time()
-            saida_t = datetime.strptime((self.escala.get('saida') or '17:00:00')[:8], '%H:%M:%S').time()
-            if agora_t >= saida_t:
-                bloquear = str(self.config_srv.get('bloqueio_tela_apos_expediente', '1')) == '1'
-                if not self.id_extra_pendente:
-                    self._fim_expediente(bloquear)
+        # 3) Fim de expediente (so no dia de trabalho e ja contando a hora extra aprovada)
+        if self.estado == 'trabalhando' and self.escala and self._trabalha_hoje():
+            if self.api.agora() >= self._fim_previsto():
+                if self.id_extra_pendente:
+                    self._consultar_extra_async()   # decide quando a resposta chegar
                 else:
-                    s = self.api.status_extra(self.id_extra_pendente)
-                    if s.get('ok'):
-                        ped = s['pedido']
-                        if ped['status'] == 'aprovada':
-                            self.minutos_extra_aprovados = int(ped.get('minutos_aprovados') or 0)
-                            self._banner(f"Hora extra aprovada: {self.minutos_extra_aprovados} min.", 'sucesso')
-                            self._notificar(f"Hora extra aprovada: {ped['minutos_aprovados']} min")
-                            self.id_extra_pendente = None
-                        elif ped['status'] == 'rejeitada':
-                            self._banner("Sua solicitacao de hora extra foi rejeitada.", 'erro')
-                            self._notificar("Sua solicitacao de hora extra foi rejeitada.")
-                            self.id_extra_pendente = None
-                            self._fim_expediente(bloquear)
+                    self._fim_expediente(self._bloqueia_tela())
 
-        # 4) Heartbeat (mantem token vivo)
-        if int(time.time()) % 60 < 1:
-            try: requests.post(f"{self.api.base}/heartbeat", headers=self.api._headers(), timeout=5)
-            except: pass
+        # 4) Heartbeat (sinaliza ao servidor que o agente esta vivo)
+        hb = max(30, int(CFG.get('heartbeat_segundos', 60)))
+        if time.monotonic() - self._ultimo_heartbeat >= hb:
+            self._ultimo_heartbeat = time.monotonic()
+            self._em_thread(self._heartbeat)
+
+    def _em_thread(self, fn):
+        """Dispara uma chamada de rede fora da thread da UI (nao congela a janela)."""
+        def wrapper():
+            try:
+                fn()
+            except Exception as e:
+                log(f"Erro em chamada assincrona: {e}")
+        threading.Thread(target=wrapper, daemon=True).start()
+
+    def _heartbeat(self):
+        requests.post(f"{self.api.base}/heartbeat", headers=self.api._headers(), timeout=5)
+
+    def _bloqueia_tela(self):
+        return str(self.config_srv.get('bloqueio_tela_apos_expediente', '1')) == '1'
+
+    def _trabalha_hoje(self):
+        """False quando a escala marca folga hoje (servidor manda trabalha_hoje=0)."""
+        if not self.escala:
+            return False
+        return int(self.escala.get('trabalha_hoje', 1) or 0) == 1
+
+    def _fim_previsto(self):
+        """Momento em que o expediente deve encerrar: saida da escala + hora extra
+        aprovada. Sem isso a extra aprovada era ignorada e a saida caia na hora."""
+        agora = self.api.agora()
+        try:
+            saida_t = datetime.strptime((self.escala.get('saida') or '17:00:00')[:8], '%H:%M:%S').time()
+        except Exception:
+            saida_t = datetime.strptime('17:00:00', '%H:%M:%S').time()
+        return (datetime.combine(agora.date(), saida_t)
+                + timedelta(minutes=max(0, self.minutos_extra_aprovados)))
+
+    def _consultar_extra_async(self):
+        """Consulta o pedido de hora extra sem travar a UI."""
+        if self._consultando_extra or not self.id_extra_pendente:
+            return
+        self._consultando_extra = True
+        pedido_id = self.id_extra_pendente
+        def work():
+            self.extra_status.emit(self.api.status_extra(pedido_id))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_extra_status(self, s):
+        """Tratado na thread da UI: aplica a decisao do gestor sobre a hora extra."""
+        self._consultando_extra = False
+        if not s or not s.get('ok'):
+            return
+        ped = s.get('pedido') or {}
+        if ped.get('status') == 'aprovada':
+            self.minutos_extra_aprovados = int(ped.get('minutos_aprovados') or 0)
+            self.id_extra_pendente = None
+            self._banner(f"Hora extra aprovada: {self.minutos_extra_aprovados} min.", 'sucesso')
+            self._notificar(f"Hora extra aprovada: {self.minutos_extra_aprovados} min")
+        elif ped.get('status') == 'rejeitada':
+            self.id_extra_pendente = None
+            self._banner("Sua solicitacao de hora extra foi rejeitada.", 'erro')
+            self._notificar("Sua solicitacao de hora extra foi rejeitada.")
+            self._fim_expediente(self._bloqueia_tela())
 
     def _fim_expediente(self, bloquear):
         if self.estado in ('fora', 'bloqueado'): return
@@ -1033,16 +1303,17 @@ class MainWindow(QMainWindow):
 
     def _dentro_expediente(self):
         if not self.escala: return False
-        agora = datetime.now().time()
+        agora = self.api.agora().time()
         ini = datetime.strptime((self.escala.get('entrada') or '08:00:00')[:8], '%H:%M:%S').time()
         fim = datetime.strptime((self.escala.get('saida')   or '17:00:00')[:8], '%H:%M:%S').time()
         return ini <= agora <= fim
 
     # ---------------- TICK (1s) ----------------
     def _tick_cronometro(self):
-        if self.estado == 'trabalhando':
-            seg = int(self._segundos_trabalhados())
-            self.lbl_cron.setText(f"{seg//3600:02d}:{(seg%3600)//60:02d}:{seg%60:02d}")
+        # Sempre mostra o total das batidas — parado em intervalo/fora do
+        # expediente, correndo enquanto trabalha. Nao e um contador proprio.
+        seg = int(self._segundos_trabalhados())
+        self.lbl_cron.setText(f"{seg//3600:02d}:{(seg%3600)//60:02d}:{seg%60:02d}")
 
         self._atualizar_progresso()
         self._atualizar_almoco()
@@ -1052,6 +1323,8 @@ class MainWindow(QMainWindow):
         info = f"v{AGENT_VERSION}  ·  {self.api.base}  ·  ocioso {idle}s  ·  {socket.gethostname()}"
         if self.id_extra_pendente:
             info += f"  ·  extra #{self.id_extra_pendente} ({self.minutos_extra_solicitados} min)"
+        if self._pendentes:
+            info += f"  ·  {self._pendentes} batida(s) aguardando envio"
         self.lbl_info.setText(info)
 
     def _atualizar_progresso(self):
@@ -1098,7 +1371,7 @@ class MainWindow(QMainWindow):
             return
         usado = self.minutos_intervalo_prev
         if self.estado == 'intervalo' and self.intervalo_inicio:
-            usado_seg_atual = (datetime.now() - self.intervalo_inicio).total_seconds()
+            usado_seg_atual = max(0.0, (self.api.agora() - self.intervalo_inicio).total_seconds())
         else:
             usado_seg_atual = 0
         restante_seg = almoco * 60 - (usado * 60 + usado_seg_atual)
@@ -1231,16 +1504,37 @@ def make_icon():
 # ------------------------------------------------------------------
 # MAIN
 # ------------------------------------------------------------------
+def instancia_unica():
+    """Impede um segundo agente na mesma sessao do Windows.
+
+    Dois processos rodando duplicam batidas e disputam o estado. O mutex e
+    'Local\\', entao cada usuario logado na maquina tem o seu."""
+    try:
+        ERROR_ALREADY_EXISTS = 183
+        # O handle fica vivo enquanto o processo existir (nao fechar de proposito).
+        ctypes.windll.kernel32.CreateMutexW(None, False, 'Local\\DOT-ON-Agent')
+        return ctypes.windll.kernel32.GetLastError() != ERROR_ALREADY_EXISTS
+    except Exception:
+        return True   # sem mutex disponivel, nao impede o app de abrir
+
 def main():
     # Loga qualquer excecao nao tratada em vez de fechar sem deixar rastro.
     def _excepthook(exc_type, exc, tb):
         import traceback
         log("ERRO NAO TRATADO:\n" + "".join(traceback.format_exception(exc_type, exc, tb)))
     sys.excepthook = _excepthook
+    _rotacionar_log()
 
     app = QApplication(sys.argv); app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(APP_QSS)
     app.setWindowIcon(app_icon())   # ícone da janela/barra de tarefas
+
+    if not instancia_unica():
+        log("Ja existe um DOT-ON Agent aberto nesta sessao; encerrando este.")
+        QMessageBox.information(None, "DOT-ON",
+            "O DOT-ON Agent ja esta aberto.\nProcure o icone azul na bandeja, ao lado do relogio.")
+        sys.exit(0)
+
     api = APIClient(CFG['api_url'])
 
     if not api.token or not api.user:

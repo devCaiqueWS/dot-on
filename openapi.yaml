@@ -264,7 +264,10 @@ paths:
     get:
       tags: [Sessoes]
       summary: Espelho mensal
-      description: Retorna as sessoes do mes do usuario autenticado.
+      description: >-
+        Retorna os dias do mes do usuario autenticado, incluindo faltas,
+        faltas abonadas e feriados, com saldo diario e resumo do banco de
+        horas (horas a favor / em debito).
       security:
         - bearerAuth: []
       parameters:
@@ -742,8 +745,23 @@ components:
           type: string
         dias:
           type: array
+          description: >-
+            Dias do mes (mais recente primeiro). Inclui dias sem batida com
+            status falta / falta_abonada / feriado. Cada dia traz carga,
+            saldo (minutos, com sinal) e situacao alem dos campos da sessao.
           items:
             type: object
+        resumo:
+          type: object
+          description: Totais do banco de horas no mes (minutos).
+          properties:
+            minutos_a_favor:
+              type: integer
+            minutos_em_debito:
+              type: integer
+              description: Valor negativo ou zero.
+            saldo_minutos:
+              type: integer
     JustificativaRequest:
       type: object
       required: [motivo]

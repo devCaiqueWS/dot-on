@@ -38,10 +38,13 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) $data = date('Y-m-d');
 $funcs = db()->prepare("SELECT id, nome_completo, matricula FROM dot_usuarios WHERE empresa_id=? AND ativo=1 ORDER BY nome_completo");
 $funcs->execute([$emp_id]); $funcs = $funcs->fetchAll();
 
-$batidas = $func ? ap_batidas_do_dia($emp_id, $func, $data) : [];
-$jornada_dias = $func ? jornada_listar($func) : [];
+// Só aceita funcionário da própria empresa (a lista $funcs já é filtrada)
 $func_nome = '';
 foreach ($funcs as $f) if ((int)$f['id'] === $func) $func_nome = $f['nome_completo'];
+if ($func && $func_nome === '') $func = 0;
+
+$batidas = $func ? ap_batidas_do_dia($emp_id, $func, $data) : [];
+$jornada_dias = $func ? jornada_listar($func) : [];
 
 $ICON = ['entrada'=>icon('login',18),'saida_intervalo'=>icon('pause',18),'retorno_intervalo'=>icon('play',18),'saida'=>icon('logout',18)];
 ?>

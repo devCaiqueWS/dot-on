@@ -354,6 +354,26 @@ function batidas_garantir_geo(): void {
 }
 
 /**
+ * Garante a coluna client_uid em dot_batidas. O agente desktop guarda as
+ * batidas feitas sem internet e as reenvia depois — o uid gerado no cliente
+ * torna o reenvio idempotente, evitando registro duplicado na cadeia REP-P.
+ * Idempotente.
+ */
+function batidas_garantir_client_uid(): void {
+    static $ok = false;
+    if ($ok) return;
+    $existe = db()->query("SELECT COUNT(*) FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'dot_batidas' AND COLUMN_NAME = 'client_uid'")->fetchColumn();
+    if (!$existe) {
+        // UNIQUE aceita vários NULL no MySQL, então batidas sem uid (web) convivem.
+        db()->exec("ALTER TABLE dot_batidas
+            ADD COLUMN client_uid VARCHAR(40) NULL,
+            ADD UNIQUE KEY uk_batida_client_uid (usuario_id, client_uid)");
+    }
+    $ok = true;
+}
+
+/**
  * Recalcula minutos_trabalhados/intervalo de uma sessão a partir das batidas.
  * Usa a mesma lógica de pareamento entrada→saída do portal do funcionário.
  * Ignora batidas anuladas.

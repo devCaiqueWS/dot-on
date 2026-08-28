@@ -56,7 +56,14 @@ elseif (!in_array('saida', $tipos_feitos)) $proxima = ['tipo'=>'saida', 'label'=
 
 // Mês atual - resumo
 $mes_inicio = date('Y-m-01');
-$st = db()->prepare("SELECT 
+
+// Banco de horas do mês: mesma apuração do painel admin (jornada por dia da
+// semana, faltas geram débito, abonos neutralizam). Roda antes do resumo
+// porque também recalcula os minutos das sessões.
+require_once __DIR__ . '/../includes/banco_horas.php';
+$ap_mes = bh_apurar((int)$user['id'], (int)$user['empresa_id'], $mes_inicio, date('Y-m-t'));
+
+$st = db()->prepare("SELECT
     COUNT(*) AS dias_trabalhados,
     SUM(minutos_trabalhados) AS min_total,
     SUM(minutos_extras) AS min_extras,
@@ -97,6 +104,10 @@ $mins_hoje = (int)($min_hoje % 60);
 
 $min_objetivo = $folga_hoje ? 0 : (int)($escala['carga_diaria_minutos'] ?? 480);
 $pct = $min_objetivo > 0 ? min(100, ($min_hoje / $min_objetivo) * 100) : 0;
+
+// Datas em português (date('l')/('F') sairiam em inglês)
+$dias_semana_pt = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+$meses_pt = [1=>'janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -172,6 +183,35 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f
 .st-aprovada{background:#d1fae5;color:#065f46}
 .st-rejeitada{background:#fee2e2;color:#991b1b}
 .jus-anexo{display:inline-block;margin-top:4px;color:#0284c7;text-decoration:none;font-size:.78rem}
+
+/* ---- Responsivo: tablet ---- */
+@media (min-width:700px){
+.app{max-width:760px}
+.content{padding:24px 28px 40px}
+.stats{grid-template-columns:repeat(4,1fr)}
+}
+
+/* ---- Responsivo: desktop ---- */
+@media (min-width:1024px){
+body{padding:28px 16px}
+.app{max-width:1000px;min-height:auto;border-radius:18px;box-shadow:0 10px 40px rgba(2,8,23,.10);overflow:hidden}
+.topbar{position:static}
+.tabs{position:static}
+.tab{font-size:.9rem}
+.content{padding:28px 34px 44px}
+.tab-content.active{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.tab-content.active > .relog{grid-column:1/-1;margin:4px 0 0}
+.tab-content.active > .card,.tab-content.active > .alert{margin-bottom:0}
+/* abas de conteúdo único ficam em coluna central */
+#tab-espelho.active,#tab-banco.active,#tab-justificativa.active,#tab-extra.active{grid-template-columns:minmax(0,1fr);max-width:680px;margin:0 auto;width:100%}
+}
+
+/* ---- Responsivo: telas grandes / TV ---- */
+@media (min-width:1600px){
+html{font-size:18px}
+.app{max-width:1150px}
+.relog{font-size:3.4rem}
+}
 </style>
 </head>
 <body>
@@ -212,7 +252,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f
 
 <div class="relog" id="relog">
 <?= date('H:i:s') ?>
-<small><?= htmlspecialchars(date('l, d \d\e F \d\e Y', strtotime($hoje))) ?></small>
+<small><?= $dias_semana_pt[(int)date('w')] ?>, <?= date('d') ?> de <?= $meses_pt[(int)date('n')] ?> de <?= date('Y') ?></small>
 </div>
 
 <div class="card">
@@ -299,8 +339,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#f1f5f
 <div class="tab-content" id="tab-banco">
 <div class="card">
 <h3>⚖ Banco de horas</h3>
-<?php 
-$saldo_min = ($resumo_mes['min_total'] ?? 0) + ($resumo_mes['min_extras'] ?? 0) - ($resumo_mes['dias_trabalhados'] ?: 0) * $min_objetivo;
+<?php
+// Saldo do mês pela apuração oficial (mesma do painel admin / espelho).
+$saldo_min = $ap_mes['saldo_periodo'];
 $saldo_h = intdiv(abs($saldo_min), 60);
 $saldo_m = abs($saldo_min) % 60;
 ?>
@@ -308,12 +349,12 @@ $saldo_m = abs($saldo_min) % 60;
 <div style="font-size:2.4rem;font-weight:800;color:<?= $saldo_min>=0?'#10b981':'#ef4444' ?>">
 <?= $saldo_min>=0?'+':'-' ?><?= $saldo_h ?>h <?= $saldo_m ?>min
 </div>
-<small style="color:#64748b">Saldo do mês de <?= date('F', strtotime($mes_inicio)) ?></small>
+<small style="color:#64748b">Saldo do mês de <?= $meses_pt[(int)date('n', strtotime($mes_inicio))] ?></small>
 </div>
 <div class="stats">
+<div class="stat"><div class="v" style="color:#10b981"><?= floor($ap_mes['total_positivo']/60) ?>h<?= $ap_mes['total_positivo']%60 ? sprintf('%02d',$ap_mes['total_positivo']%60) : '' ?></div><div class="l">a favor</div></div>
+<div class="stat"><div class="v" style="color:#ef4444"><?= floor(abs($ap_mes['total_negativo'])/60) ?>h<?= abs($ap_mes['total_negativo'])%60 ? sprintf('%02d',abs($ap_mes['total_negativo'])%60) : '' ?></div><div class="l">em débito</div></div>
 <div class="stat"><div class="v"><?= floor(($resumo_mes['min_total']??0)/60) ?>h</div><div class="l">trabalhadas</div></div>
-<div class="stat"><div class="v"><?= floor(($resumo_mes['min_extras']??0)/60) ?>h</div><div class="l">extras aprovadas</div></div>
-<div class="stat"><div class="v"><?= floor(($resumo_mes['min_ociosos']??0)/60) ?>h</div><div class="l">ociosos</div></div>
 <div class="stat"><div class="v"><?= $resumo_mes['dias_trabalhados']?:0 ?></div><div class="l">dias</div></div>
 </div>
 </div>
@@ -519,6 +560,12 @@ async function baterPonto(tipo) {
     } catch(e) { alert('Erro de conexão: ' + e.message); }
 }
 
+function fmtSaldoMin(min) {
+    const s = min < 0 ? '-' : '+';
+    min = Math.abs(parseInt(min) || 0);
+    return s + Math.floor(min/60) + 'h' + String(min%60).padStart(2,'0');
+}
+
 async function carregarEspelho() {
     const div = document.getElementById('espelho-content');
     try {
@@ -528,13 +575,28 @@ async function carregarEspelho() {
             div.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px">Sem dados disponíveis.</p>';
             return;
         }
-        let html = '<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left">Dia</th><th>Trab.</th><th>Extra</th><th>Status</th></tr></thead><tbody>';
+        let html = '';
+        if (j.resumo) {
+            html += `<div style="display:flex;gap:8px;margin-bottom:10px">
+                <div style="flex:1;background:#f0fdf4;border-radius:8px;padding:8px;text-align:center"><b style="color:#16a34a">${fmtSaldoMin(j.resumo.minutos_a_favor)}</b><br><small style="color:#64748b">a favor</small></div>
+                <div style="flex:1;background:#fef2f2;border-radius:8px;padding:8px;text-align:center"><b style="color:#dc2626">${fmtSaldoMin(j.resumo.minutos_em_debito)}</b><br><small style="color:#64748b">em débito</small></div>
+                <div style="flex:1;background:#f1f5f9;border-radius:8px;padding:8px;text-align:center"><b style="color:${j.resumo.saldo_minutos>=0?'#16a34a':'#dc2626'}">${fmtSaldoMin(j.resumo.saldo_minutos)}</b><br><small style="color:#64748b">saldo</small></div>
+            </div>`;
+        }
+        const corStatus = {falta:'#dc2626', falta_abonada:'#16a34a', feriado:'#0d9488'};
+        html += '<table style="width:100%;font-size:.82rem;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left">Dia</th><th>Trab.</th><th>Saldo</th><th>Status</th></tr></thead><tbody>';
         j.dias.forEach(d => {
             const min = parseInt(d.minutos_trabalhados || 0);
             const h = Math.floor(min/60), m = min%60;
-            const ext = parseInt(d.minutos_extras || 0);
-            const eh = Math.floor(ext/60), em = ext%60;
-            html += `<tr><td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">${d.data_ref.substring(8,10)}/${d.data_ref.substring(5,7)}</td><td style="text-align:center">${h}h${String(m).padStart(2,'0')}</td><td style="text-align:center;color:${ext>0?'#f59e0b':'#94a3b8'}">${ext>0?eh+'h'+String(em).padStart(2,'0'):'—'}</td><td style="text-align:center"><small>${d.status}</small></td></tr>`;
+            const temSaldo = d.saldo !== null && d.saldo !== undefined;
+            const saldo = parseInt(d.saldo || 0);
+            const st = (d.status || '').replace('_',' ');
+            html += `<tr>
+                <td style="padding:6px 8px;border-bottom:1px solid #f1f5f9">${d.data_ref.substring(8,10)}/${d.data_ref.substring(5,7)}</td>
+                <td style="text-align:center">${h}h${String(m).padStart(2,'0')}</td>
+                <td style="text-align:center;font-weight:600;color:${temSaldo?(saldo>=0?'#16a34a':'#dc2626'):'#94a3b8'}">${temSaldo?fmtSaldoMin(saldo):'—'}</td>
+                <td style="text-align:center"><small style="color:${corStatus[d.status]||'#64748b'}">${st}</small></td>
+            </tr>`;
         });
         html += '</tbody></table>';
         div.innerHTML = html;
